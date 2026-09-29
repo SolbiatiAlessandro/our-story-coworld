@@ -3,10 +3,12 @@
   python3 play.py join NAME
   python3 play.py look NAME
   python3 play.py wait NAME            # block until it is your move, then look
-  python3 play.py draw NAME X Y FILE   # submit your piece; X Y = top-left corner on the canvas
-  python3 play.py rank NAME "C A D B"  # every other piece, best first
+  python3 play.py draw NAME X Y FILE "why"      # submit your piece; X Y = its top-left corner
+  python3 play.py rank NAME "C A D B" "why"     # this round's other pieces, best first
 
-FILE holds the piece: up to 16 lines of up to 16 colour letters, '.' = transparent.
+"why" is one sentence: why you drew what you drew, or why you voted that way.
+
+FILE holds the piece: up to 32 lines of up to 32 colour letters, '.' = transparent.
 Use '-' as FILE to read the piece from standard input.
 
 Host only (not for players):
@@ -71,11 +73,11 @@ def main(argv):
     elif cmd == "join":
         print(post("/api/join", {"name": name}))
     elif cmd == "draw":
-        x, y, path = args[1], args[2], args[3]
+        x, y, path, why = args[1], args[2], args[3], " ".join(args[4:])
         rows = (sys.stdin.read() if path == "-" else open(path).read()).split("\n")
-        print(post("/api/draw", {"name": name, "x": x, "y": y, "rows": rows}))
+        print(post("/api/draw", {"name": name, "x": x, "y": y, "rows": rows, "why": why}))
     elif cmd == "rank":
-        print(post("/api/rank", {"name": name, "order": " ".join(args[1:])}))
+        print(post("/api/rank", {"name": name, "order": args[1], "why": " ".join(args[2:])}))
     elif cmd in ("start", "force"):
         print(post("/api/force", {}))
     elif cmd == "reset":

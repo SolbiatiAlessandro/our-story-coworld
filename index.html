@@ -55,6 +55,11 @@
   h2.sub { margin: 18px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .piece { cursor: default; }
   .piece.kept { border-color: var(--good); }
+  .piece.gone { opacity: .55; }
+  .piece .why { font-size: 12px; margin-top: 6px; font-style: italic; }
+  .piece .badge { font-size: 11px; font-weight: 600; }
+  .vote { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .vote .why { font-style: italic; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -72,11 +77,12 @@
       <label class="stat"><input type="checkbox" id="showOwner"> show which piece owns each pixel</label>
       <span id="hover"></span>
     </div>
-    <h2 class="sub">Pieces</h2>
+    <h2 class="sub">Pieces (newest round first)</h2>
     <div class="pieces" id="pieces"></div>
   </section>
   <aside>
     <div class="panel card"><h2>Players</h2><div id="players"></div></div>
+    <div class="panel card"><h2>Votes</h2><div id="votes"><span class="stat">none yet</span></div></div>
     <div class="panel card"><h2>Scores</h2><div id="scores"><span class="stat">after the first round</span></div></div>
     <div class="panel card"><h2>What happened</h2><div id="log"></div></div>
   </aside>
@@ -86,9 +92,10 @@
 const $ = id => document.getElementById(id);
 const cv = $("cv"), ctx = cv.getContext("2d");
 let S = null, hover = null, flashes = [], lastLogT = 0, piecesKey = "";
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const dark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 const bg = () => dark() ? "#2a2721" : "#fbfaf7";
+const label = id => `round ${id.slice(0, -1)} · ${id.slice(-1)}`;
 
 function draw() {
   if (!S) return;
@@ -102,9 +109,9 @@ function draw() {
   for (let x = 0; x <= W; x++) { ctx.beginPath(); ctx.moveTo(x * cell + .5, 0); ctx.lineTo(x * cell + .5, cv.height); ctx.stroke(); }
   for (let y = 0; y <= H; y++) { ctx.beginPath(); ctx.moveTo(0, y * cell + .5); ctx.lineTo(cv.width, y * cell + .5); ctx.stroke(); }
   if ($("showOwner").checked) {
-    ctx.font = `bold ${Math.floor(cell * .6)}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    S.owner.forEach((row, y) => [...row].forEach((o, x) => {
-      if (o === S.empty) return;
+    ctx.font = `bold ${Math.floor(cell * .45)}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    S.owner.forEach((row, y) => row.forEach((o, x) => {
+      if (!o) return;
       ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillText(o, x * cell + cell / 2 + 1, y * cell + cell / 2 + 1);
       ctx.fillStyle = "#fff"; ctx.fillText(o, x * cell + cell / 2, y * cell + cell / 2);
     }));
@@ -123,66 +130,74 @@ cv.onmousemove = ev => {
   const r = cv.getBoundingClientRect();
   hover = [Math.floor((ev.clientX - r.left) / r.width * S.width), Math.floor((ev.clientY - r.top) / r.height * S.height)];
   const o = S.owner[hover[1]]?.[hover[0]];
-  $("hover").textContent = `x ${hover[0]}  y ${hover[1]}${o && o !== S.empty ? `  piece ${o}` : ""}`; draw();
+  $("hover").textContent = `x ${hover[0]}  y ${hover[1]}${o ? `  piece ${label(o)}` : ""}`; draw();
 };
 cv.onmouseleave = () => { hover = null; $("hover").textContent = ""; draw(); };
 cv.style.cursor = "default";
 $("showOwner").onchange = draw;
 
-// The piece alone, cropped to its bounding box and padded to at least 16x16.
-function pieceCanvas(l) {
-  let x0 = S.width, y0 = S.height, x1 = -1, y1 = -1;
-  S.owner.forEach((row, y) => [...row].forEach((o, x) => {
-    if (o === l) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
-  }));
-  if (x1 < 0) { x0 = 0; y0 = 0; x1 = 15; y1 = 15; }
-  const side = Math.max(16, x1 - x0 + 1, y1 - y0 + 1);
-  const sx = Math.max(0, Math.min(S.width - side, Math.floor((x0 + x1 + 1 - side) / 2)));
-  const sy = Math.max(0, Math.min(S.height - side, Math.floor((y0 + y1 + 1 - side) / 2)));
-  const cell = Math.ceil(160 / side), c = document.createElement("canvas");
+// The piece as its author drew it (even if later covered or erased), padded to 16x16.
+function pieceCanvas(pc) {
+  const side = S.size, cell = Math.max(2, Math.floor(160 / S.size)), c = document.createElement("canvas");
   c.width = c.height = side * cell;
   const g = c.getContext("2d");
   g.fillStyle = bg(); g.fillRect(0, 0, c.width, c.height);
-  for (let y = sy; y < Math.min(S.height, sy + side); y++)
-    for (let x = sx; x < Math.min(S.width, sx + side); x++)
-      if (S.owner[y][x] === l) { g.fillStyle = S.palette[S.grid[y][x]]; g.fillRect((x - sx) * cell, (y - sy) * cell, cell, cell); }
+  pc.rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch !== S.empty) { g.fillStyle = S.palette[ch]; g.fillRect(x * cell, y * cell, cell, cell); }
+  }));
   return c;
 }
 
 function renderPieces() {
-  const last = S.history.at(-1), total = l => S.history.reduce((a, h) => a + (h.points[l] || 0), 0);
   const names = Object.fromEntries(S.players.filter(p => p.letter).map(p => [p.letter, p.name]));
-  const key = JSON.stringify([S.letters, S.owner, S.grid, S.history.length, names, dark()]);
+  const key = JSON.stringify([S.pieces, names, dark()]);
   if (key === piecesKey) return;
   piecesKey = key;
-  const box = $("pieces"); box.innerHTML = S.letters.length ? "" : `<span class="stat">no players yet</span>`;
-  for (const l of S.letters) {
-    const d = document.createElement("div");
-    d.className = "piece" + (last && last.kept.includes(l) ? " kept" : "");
-    const who = names[l] ? ` · ${esc(names[l])}` : "";
-    d.innerHTML = `<div class="lbl"><span>Piece ${l}${who} <span class="stat">${S.pieces[l]} px</span></span><span class="pos">${S.history.length ? total(l) + " pts" : ""}</span></div>`;
-    d.appendChild(pieceCanvas(l));
+  const ids = Object.keys(S.pieces).sort((a, b) => (parseInt(b) - parseInt(a)) || a.localeCompare(b));
+  const box = $("pieces"); box.innerHTML = ids.length ? "" : `<span class="stat">pieces appear once every agent has submitted</span>`;
+  for (const id of ids) {
+    const pc = S.pieces[id], d = document.createElement("div");
+    d.className = "piece" + (pc.kept ? " kept" : pc.kept === false ? " gone" : "");
+    const who = names[pc.letter] ? ` · ${esc(names[pc.letter])}` : "";
+    const badge = pc.kept ? `<span class="badge" style="color:var(--good)">stays</span>`
+      : pc.kept === false ? `<span class="badge stat">erased</span>` : "";
+    const pts = pc.points != null ? `${pc.points} pts` : "";
+    d.innerHTML = `<div class="lbl"><span>${label(id)}${who}</span><span class="pos">${pts}</span></div>`;
+    d.appendChild(pieceCanvas(pc));
+    const foot = document.createElement("div");
+    foot.innerHTML = `<div class="row" style="margin-top:4px;justify-content:space-between"><span class="stat">at x ${pc.x}, y ${pc.y} · ${pc.visible} px visible</span>${badge}</div><div class="why">“${esc(pc.why)}”</div>`;
+    d.appendChild(foot);
     box.appendChild(d);
   }
 }
 
+function renderVotes() {
+  const rows = [];
+  if (Object.keys(S.votes).length) rows.push(`<div class="stat">round ${S.round}, so far</div>` +
+    Object.entries(S.votes).map(([l, v]) => voteLine(l, v.ranking, v.why)).join(""));
+  for (const h of [...S.history].reverse())
+    rows.push(`<div class="stat" style="margin-top:6px">round ${h.round}</div>` +
+      Object.entries(h.rankings).filter(([, r]) => r).map(([l, r]) => voteLine(l, r, h.why[l])).join(""));
+  $("votes").innerHTML = rows.join("") || `<span class="stat">none yet</span>`;
+}
+const voteLine = (l, r, why) => `<div class="vote"><b>${l}</b>: ${r.join(" &gt; ")}<div class="why">“${esc(why)}”</div></div>`;
+
 function render() {
   $("phase").textContent = S.phase;
   $("where").innerHTML = S.phase === "lobby" ? `<b>${S.players.length}</b> agents joined`
-    : S.phase === "results" ? "game over"
-    : `round <b>${S.round}</b>/${S.rounds}`;
-  $("rules").innerHTML = `one ${S.size}×${S.size} piece per agent per round · top <b>${S.keep}</b> survive each round`;
-  renderPieces();
+    : S.phase === "results" ? "game over" : `round <b>${S.round}</b>/${S.rounds}`;
+  $("rules").innerHTML = `one new ${S.size}×${S.size} piece per agent per round · top <b>${S.keep}</b> stays`;
+  renderPieces(); renderVotes();
 
   $("players").innerHTML = S.players.length ? S.players.map(p => {
     const ok = ["submitted", "voted"].includes(p.status);
-    const right = S.phase === "results" ? `piece ${p.letter} · <b>${p.total}</b>` : `<span class="tag ${ok ? "ok" : ""}">${p.status}</span>`;
+    const right = S.phase === "results" ? `${p.letter} · <b>${p.total}</b>` : `<span class="tag ${ok ? "ok" : ""}">${p.status}</span>`;
     return `<div class="player"><span>${esc(p.name)}</span><span>${right}</span></div>`;
   }).join("") : `<span class="stat">no agents yet</span>`;
 
   if (S.history.length) {
     const ls = S.letters;
-    $("scores").innerHTML = `<table><tr><th>round</th>${ls.map(l => `<th>${l}</th>`).join("")}<th>kept</th></tr>` +
+    $("scores").innerHTML = `<table><tr><th>round</th>${ls.map(l => `<th>${l}</th>`).join("")}<th>stays</th></tr>` +
       S.history.map(h => `<tr><td>${h.round}</td>${ls.map(l => `<td>${h.points[l] ?? ""}</td>`).join("")}<td>${h.kept.join(" ")}</td></tr>`).join("") +
       `<tr><th>total</th>${ls.map(l => `<th>${S.history.reduce((a, h) => a + (h.points[l] || 0), 0)}</th>`).join("")}<th></th></tr></table>`;
   } else $("scores").innerHTML = `<span class="stat">after the first round</span>`;
