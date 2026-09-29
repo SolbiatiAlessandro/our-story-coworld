@@ -1,22 +1,22 @@
 """our-story-coworld: a drawing contest on one shared pixel canvas.
 
-Stdlib only. Run: python3 server.py [--port 8765] [--pixels 16] [--turns 3] [--epochs 4]
-                                     [--keep 3] [--players N] [--fresh]
+Stdlib only. Run: python3 server.py [--port 8765] [--size 16] [--rounds 4] [--keep 2]
+                                     [--players N] [--fresh]
 
 Rules:
   lobby   agents join (the webpage is for watching only); the game starts when
-          --players have joined, or when the host runs `play.py start`. Each gets an anonymous letter (A, B, ...). Names stay hidden
-          until the end. No chat: the canvas is the only channel.
-  draw    turn based, no clock. Each turn every player secretly submits up to
-          --pixels pixels anywhere on the canvas, on top of anyone's, or '.' to
-          erase. When all players have submitted, the moves are applied in a new
-          random player order, so later moves overwrite earlier ones.
-          A player's piece is every pixel that currently shows that player's move.
-  rank    after --turns turns, each player ranks every other piece, best first.
-          Borda points: with P players, first place gets P-1, last gets 1.
-  keep    only the --keep best pieces of the epoch stay on the canvas; every other
-          piece is erased. Then the next epoch starts.
-  end     after --epochs epochs, the most total points wins.
+          --players have joined, or when the host runs `play.py start`. Each agent
+          gets an anonymous letter (A, B, ...). No chat: the canvas is the only channel.
+  draw    each round every agent secretly submits one piece: a --size x --size
+          picture placed anywhere on the canvas, even over other pieces ('.' in the
+          picture is transparent). When all pieces are in, they are painted in a
+          random order, so a later piece covers an earlier one where they overlap.
+          A piece is every pixel on the canvas that still shows it.
+  vote    each agent ranks every other piece, best first. Borda points: with P
+          agents, first place gets P-1, last gets 1.
+  keep    only the --keep best pieces of the round stay on the canvas; the others
+          are erased. Then the next round starts.
+  end     after --rounds rounds, the most total points wins.
 """
 
 import argparse
@@ -51,14 +51,13 @@ state = None
 
 def new_state():
     return {
-        "phase": "lobby", "epoch": 0, "turn": 0,
-        "epochs": cfg.epochs, "turns": cfg.turns, "keep": cfg.keep, "pixels_per_turn": cfg.pixels,
+        "phase": "lobby", "round": 0, "rounds": cfg.rounds, "keep": cfg.keep, "size": cfg.size,
         "width": WIDTH, "height": HEIGHT,
         "grid": [EMPTY * WIDTH for _ in range(HEIGHT)],
-        "owner": [EMPTY * WIDTH for _ in range(HEIGHT)],   # letter of the player whose move shows
-        "players": {},   # name -> {"letter", "queue": [[x,y,c]], "done", "ranking", "total"}
-        "log": [],       # {"epoch", "turn", "t", "kind", "text", "moves"}
-        "history": [],   # per epoch: {"epoch", "points", "kept", "rankings"}
+        "owner": [EMPTY * WIDTH for _ in range(HEIGHT)],   # letter of the piece each pixel shows
+        "players": {},   # name -> {"letter", "piece": {"x", "y", "rows"} | None, "ranking", "total"}
+        "log": [],       # {"round", "t", "kind", "text", "moves"}
+        "history": [],   # per round: {"round", "points", "kept", "rankings"}
     }
 
 
@@ -67,7 +66,7 @@ def save():
 
 
 def add_log(kind, text="", moves=None):
-    state["log"].append({"epoch": state["epoch"], "turn": state["turn"], "t": time.time(),
+    state["log"].append({"round": state["round"], "t": time.time(),
                          "kind": kind, "text": text, "moves": moves or []})
     state["log"] = state["log"][-300:]
 
@@ -99,34 +98,34 @@ def start_game():
         raise ValueError("game already started")
     if len(state["players"]) < 2:
         raise ValueError("need at least 2 players")
-    state.update(phase="draw", epoch=1, turn=1)
-    add_log("phase", f"game starts: {cfg.epochs} epochs of {cfg.turns} turns, "
-                     f"{cfg.pixels} pixels per turn, top {cfg.keep} pieces survive each epoch")
-    add_log("turn", "epoch 1, turn 1")
+    state.update(phase="draw", round=1)
+    add_log("phase", f"game starts: {cfg.rounds} rounds, one {cfg.size}x{cfg.size} piece per agent "
+                     f"per round, top {cfg.keep} pieces survive each round")
+    add_log("turn", "round 1: draw")
 
 
-def resolve_turn():
-    """Apply every queued move in a random player order, then start the next turn."""
-    order = list(state["players"].values())
+def paint_pieces():
+    """Paint every submitted piece in a random order, then open the vote."""
+    order = [p for p in state["players"].values() if p["piece"]]
     random.shuffle(order)
     moves = []
     for p in order:
-        for x, y, c in p["queue"]:
-            set_cell(state["grid"], x, y, c)
-            set_cell(state["owner"], x, y, EMPTY if c == EMPTY else p["letter"])
-        if p["queue"]:
-            moves.append({"letter": p["letter"], "pixels": p["queue"]})
-        p["queue"], p["done"] = [], False
-    add_log("resolve", "order: " + " ".join(p["letter"] for p in order), moves)
-    if state["turn"] >= cfg.turns:
-        state["phase"] = "rank"
-        add_log("phase", f"epoch {state['epoch']} drawing is over; rank every other piece, best first")
-    else:
-        state["turn"] += 1
-        add_log("turn", f"epoch {state['epoch']}, turn {state['turn']}")
+        pc, px = p["piece"], []
+        for dy, row in enumerate(pc["rows"]):
+            for dx, c in enumerate(row):
+                x, y = pc["x"] + dx, pc["y"] + dy
+                if c != EMPTY and 0 <= x < WIDTH and 0 <= y < HEIGHT:
+                    set_cell(state["grid"], x, y, c)
+                    set_cell(state["owner"], x, y, p["letter"])
+                    px.append([x, y, c])
+        moves.append({"letter": p["letter"], "pixels": px})
+        p["piece"] = None
+    add_log("resolve", "painted in order: " + " ".join(p["letter"] for p in order), moves)
+    state["phase"] = "vote"
+    add_log("phase", f"round {state['round']} pieces are on the canvas; rank every other piece, best first")
 
 
-def end_epoch():
+def end_round():
     ls = letters()
     points = {l: 0 for l in ls}
     for p in state["players"].values():
@@ -143,28 +142,28 @@ def end_epoch():
             if o != EMPTY and o not in kept:
                 set_cell(state["grid"], x, y, EMPTY)
                 set_cell(state["owner"], x, y, EMPTY)
-    state["history"].append({"epoch": state["epoch"], "points": points, "kept": kept,
+    state["history"].append({"round": state["round"], "points": points, "kept": kept,
                              "rankings": {p["letter"]: p["ranking"] for p in state["players"].values()}})
-    add_log("phase", f"epoch {state['epoch']} points: " +
+    add_log("phase", f"round {state['round']} points: " +
             " ".join(f"{l}={points[l]}" for l in best) + f"; kept {' '.join(kept)}, erased the rest")
     for p in state["players"].values():
         p["ranking"] = None
-    if state["epoch"] >= cfg.epochs:
+    if state["round"] >= cfg.rounds:
         state["phase"] = "results"
         add_log("phase", "game over: " + ", ".join(
             f"{p['letter']}={n} {p['total']}" for n, p in
             sorted(state["players"].items(), key=lambda kv: -kv[1]["total"])))
     else:
-        state.update(phase="draw", epoch=state["epoch"] + 1, turn=1)
-        add_log("turn", f"epoch {state['epoch']}, turn 1")
+        state.update(phase="draw", round=state["round"] + 1)
+        add_log("turn", f"round {state['round']}: draw")
 
 
 def maybe_advance():
     ps = state["players"].values()
-    if state["phase"] == "draw" and all(p["done"] or len(p["queue"]) >= cfg.pixels for p in ps):
-        resolve_turn()
-    elif state["phase"] == "rank" and all(p["ranking"] for p in ps):
-        end_epoch()
+    if state["phase"] == "draw" and all(p["piece"] for p in ps):
+        paint_pieces()
+    elif state["phase"] == "vote" and all(p["ranking"] for p in ps):
+        end_round()
 
 
 # ---- actions ---------------------------------------------------------------
@@ -180,51 +179,48 @@ def do_join(body):
     free = [l for l in LETTERS if l not in letters()]
     if not free:
         raise ValueError("game is full")
-    state["players"][name] = {"letter": free[0], "queue": [], "done": False, "ranking": None, "total": 0}
-    add_log("join", f"a player joined ({len(state['players'])} now)")
+    state["players"][name] = {"letter": free[0], "piece": None, "ranking": None, "total": 0}
+    add_log("join", f"an agent joined ({len(state['players'])} now)")
     if cfg.players and len(state["players"]) >= cfg.players:
         start_game()
     return {"ok": True, "letter": free[0]}
 
 
-def do_place(body):
+def do_draw(body):
     name, p = get_player(body.get("name"))
     if state["phase"] != "draw":
         raise ValueError(f"cannot draw during the {state['phase']} phase")
-    if p["done"]:
-        raise ValueError("you already submitted this turn; wait for the next one")
-    pixels = body.get("pixels") or []
-    left = cfg.pixels - len(p["queue"])
-    if len(pixels) > left:
-        raise ValueError(f"only {left} pixels left this turn (asked for {len(pixels)})")
-    queued = []
-    for px in pixels:
-        x, y, c = int(px[0]), int(px[1]), str(px[2])
-        if not (0 <= x < WIDTH and 0 <= y < HEIGHT):
-            raise ValueError(f"({x},{y}) is off the canvas; x is 0-{WIDTH - 1}, y is 0-{HEIGHT - 1}")
-        if c not in PALETTE and c != EMPTY:
-            raise ValueError(f"unknown colour {c!r}; use one of {''.join(PALETTE)} or '.' to erase")
-        queued.append([x, y, c])
-    p["queue"] += queued
-    turn = (state["epoch"], state["turn"])
-    maybe_advance()
-    return {"ok": True, "queued": len(queued), "pixels_left": max(0, cfg.pixels - len(p["queue"])),
-            "turn_resolved": turn != (state["epoch"], state["turn"]) or state["phase"] != "draw"}
-
-
-def do_done(body):
-    name, p = get_player(body.get("name"))
-    if state["phase"] != "draw":
-        raise ValueError(f"nothing to submit during the {state['phase']} phase")
-    p["done"] = True
+    if p["piece"]:
+        raise ValueError("you already submitted your piece this round")
+    x, y = int(body.get("x")), int(body.get("y"))
+    rows = body.get("rows")
+    if isinstance(rows, str):
+        rows = rows.split("\n")
+    rows = [r.rstrip() for r in rows or []]
+    while rows and not rows[-1]:
+        rows.pop()
+    n = cfg.size
+    if not rows or len(rows) > n or any(len(r) > n for r in rows):
+        raise ValueError(f"a piece is at most {n} rows of at most {n} characters")
+    for r in rows:
+        for c in r:
+            if c not in PALETTE and c != EMPTY:
+                raise ValueError(f"unknown colour {c!r}; use one of {''.join(PALETTE)} or '.' for transparent")
+    if not (0 <= x <= WIDTH - 1 and 0 <= y <= HEIGHT - 1):
+        raise ValueError(f"top-left corner must be on the canvas: x 0-{WIDTH - 1}, y 0-{HEIGHT - 1}")
+    if not any(c != EMPTY for r in rows for c in r):
+        raise ValueError("your piece is empty")
+    p["piece"] = {"x": x, "y": y, "rows": rows}
+    add_log("submit", f"a piece came in ({sum(1 for q in state['players'].values() if q['piece'])}"
+                      f"/{len(state['players'])})")
     maybe_advance()
     return {"ok": True}
 
 
 def do_rank(body):
     name, p = get_player(body.get("name"))
-    if state["phase"] != "rank":
-        raise ValueError(f"cannot rank during the {state['phase']} phase")
+    if state["phase"] != "vote":
+        raise ValueError(f"cannot vote during the {state['phase']} phase")
     order = body.get("order")
     if isinstance(order, str):
         order = order.replace(",", " ").split()
@@ -234,20 +230,20 @@ def do_rank(body):
         raise ValueError(f"rank each of {' '.join(expected)} exactly once, best first "
                          f"(your own piece {p['letter']} is excluded)")
     p["ranking"] = order
-    add_log("rank", f"a ranking came in ({sum(1 for q in state['players'].values() if q['ranking'])}"
+    add_log("rank", f"a vote came in ({sum(1 for q in state['players'].values() if q['ranking'])}"
                     f"/{len(state['players'])})")
     maybe_advance()
     return {"ok": True}
 
 
 def do_force(body):
-    """Host override: start the game, or move on past a stuck player."""
+    """Host override: start the game, or move on past a stuck agent."""
     if state["phase"] == "lobby":
         start_game()
     elif state["phase"] == "draw":
-        resolve_turn()
-    elif state["phase"] == "rank":
-        end_epoch()
+        paint_pieces()
+    elif state["phase"] == "vote":
+        end_round()
     return {"ok": True, "phase": state["phase"]}
 
 
@@ -255,15 +251,15 @@ def do_force(body):
 
 def status(p):
     if state["phase"] == "draw":
-        return "submitted" if p["done"] or len(p["queue"]) >= cfg.pixels else "thinking"
-    if state["phase"] == "rank":
-        return "ranked" if p["ranking"] else "ranking"
+        return "submitted" if p["piece"] else "drawing"
+    if state["phase"] == "vote":
+        return "voted" if p["ranking"] else "voting"
     return "ready"
 
 
 def public_state(me=None):
-    s = {k: state[k] for k in ("phase", "epoch", "turn", "epochs", "turns", "keep",
-                               "pixels_per_turn", "width", "height", "grid", "owner", "history")}
+    s = {k: state[k] for k in ("phase", "round", "rounds", "keep", "size",
+                               "width", "height", "grid", "owner", "history")}
     over = state["phase"] == "results"
     s.update(palette=PALETTE, empty=EMPTY, letters=letters(), log=state["log"][-120:],
              pieces={l: piece_size(l) for l in letters()},
@@ -272,7 +268,7 @@ def public_state(me=None):
                       for n, p in state["players"].items()])
     if me in state["players"]:
         p = state["players"][me]
-        s["me"] = {"name": me, "letter": p["letter"], "queue": p["queue"], "done": p["done"],
+        s["me"] = {"name": me, "letter": p["letter"], "submitted": bool(p["piece"]),
                    "ranking": p["ranking"], "total": p["total"]}
     return s
 
@@ -290,7 +286,7 @@ def piece_text(letter):
     """The canvas with only this piece's pixels, cropped to the rows it uses."""
     rows = [y for y in range(HEIGHT) if letter in state["owner"][y]]
     if not rows:
-        return ["    (empty: nothing of this piece is on the canvas)"]
+        return ["    (empty: nothing of this piece is visible)"]
     masked = ["".join(state["grid"][y][x] if state["owner"][y][x] == letter else EMPTY
                       for x in range(WIDTH)) for y in range(HEIGHT)]
     return grid_text(masked, range(rows[0], rows[-1] + 1))
@@ -299,37 +295,38 @@ def piece_text(letter):
 def canvas_text(me=None):
     p = state["players"].get(me)
     mine = p["letter"] if p else None
+    n = cfg.size
     lines = [{
-        "lobby": f"LOBBY: waiting for the game to start. {len(state['players'])} players joined.",
-        "draw": f"DRAW: epoch {state['epoch']}/{cfg.epochs}, turn {state['turn']}/{cfg.turns}. "
-                f"Submit up to {cfg.pixels} pixels anywhere.",
-        "rank": f"RANK: epoch {state['epoch']}/{cfg.epochs} drawing is over. Rank every other piece, best first.",
+        "lobby": f"LOBBY: waiting for the game to start. {len(state['players'])} agents joined.",
+        "draw": f"DRAW: round {state['round']}/{cfg.rounds}. Submit one piece: up to {n}x{n}, anywhere.",
+        "vote": f"VOTE: round {state['round']}/{cfg.rounds}. Rank every other piece, best first.",
         "results": "RESULTS: game over.",
     }[state["phase"]]]
     if p:
         extra = ""
         if state["phase"] == "draw":
-            extra = ("; you already submitted this turn" if p["done"] or len(p["queue"]) >= cfg.pixels
-                     else f"; pixels left this turn: {cfg.pixels - len(p['queue'])}")
+            extra = "; you already submitted" if p["piece"] else "; your piece is not submitted yet"
+        if state["phase"] == "vote":
+            extra = "; you already voted" if p["ranking"] else "; your vote is not submitted yet"
         lines.append(f"you are {me}, your piece is {mine}, your total points: {p['total']}{extra}")
-    lines.append("players: " + ", ".join(f"{n} ({status(q)})" for n, q in state["players"].items()))
-    lines.append("pieces (pixels on canvas): " + " ".join(f"{l}={piece_size(l)}" for l in letters()))
-    lines.append("colours: " + " ".join(f"{k}={v}" for k, v in NAMES.items()) + " .=empty")
+    lines.append("agents: " + ", ".join(f"{nm} ({status(q)})" for nm, q in state["players"].items()))
+    lines.append("pieces on canvas (visible pixels): " + " ".join(f"{l}={piece_size(l)}" for l in letters()))
+    lines.append("colours: " + " ".join(f"{k}={v}" for k, v in NAMES.items()) + " .=empty/transparent")
     lines.append(f"x = column 0-{WIDTH - 1} left to right, y = row 0-{HEIGHT - 1} top to bottom")
     lines += ["", "CANVAS"] + grid_text(state["grid"])
     lines += ["", "OWNERSHIP (which piece each pixel belongs to)"] + grid_text(state["owner"])
-    if state["phase"] == "rank":
+    if state["phase"] == "vote":
         for l in letters():
             if l != mine:
                 lines += ["", f"PIECE {l}"] + piece_text(l)
     if state["history"]:
         lines.append("")
         for h in state["history"]:
-            lines.append(f"epoch {h['epoch']}: points " +
+            lines.append(f"round {h['round']}: points " +
                          " ".join(f"{l}={v}" for l, v in sorted(h["points"].items(), key=lambda kv: -kv[1])) +
                          f"; kept {' '.join(h['kept'])}")
     if state["phase"] == "results":
-        lines.append("final: " + ", ".join(f"{q['letter']}={n} {q['total']}" for n, q in
+        lines.append("final: " + ", ".join(f"{q['letter']}={nm} {q['total']}" for nm, q in
                                            sorted(state["players"].items(), key=lambda kv: -kv[1]["total"])))
     return "\n".join(lines) + "\n"
 
@@ -365,7 +362,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         except json.JSONDecodeError:
             return self.send(400, {"error": "body must be JSON"})
-        routes = {"/api/join": do_join, "/api/place": do_place, "/api/done": do_done,
+        routes = {"/api/join": do_join, "/api/draw": do_draw,
                   "/api/rank": do_rank, "/api/force": do_force}
         with lock:
             if path == "/api/reset":
@@ -386,21 +383,20 @@ def main():
     global cfg, state
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--pixels", type=int, default=16, help="pixels per player per turn")
-    ap.add_argument("--turns", type=int, default=3, help="drawing turns per epoch")
-    ap.add_argument("--epochs", type=int, default=4, help="epochs per game")
-    ap.add_argument("--keep", type=int, default=3, help="pieces that survive each epoch")
+    ap.add_argument("--size", type=int, default=16, help="a piece is at most size x size")
+    ap.add_argument("--rounds", type=int, default=4, help="rounds per game")
+    ap.add_argument("--keep", type=int, default=2, help="pieces that survive each round")
     ap.add_argument("--players", type=int, default=0,
-                    help="start the game automatically once this many players have joined")
+                    help="start the game automatically once this many agents have joined")
     ap.add_argument("--fresh", action="store_true", help="ignore state.json and start a new game")
     cfg = ap.parse_args()
     state = new_state()
     if STATE_FILE.exists() and not cfg.fresh:
         saved = json.loads(STATE_FILE.read_text())
-        if "owner" in saved:
+        if "rounds" in saved:
             state.update(saved)
-    print(f"our-story-coworld on http://localhost:{cfg.port}  ({cfg.pixels} px/turn, "
-          f"{cfg.turns} turns x {cfg.epochs} epochs, keep {cfg.keep})")
+    print(f"our-story-coworld on http://localhost:{cfg.port}  ({cfg.size}x{cfg.size} pieces, "
+          f"{cfg.rounds} rounds, keep {cfg.keep})", flush=True)
     ThreadingHTTPServer(("127.0.0.1", cfg.port), Handler).serve_forever()
 
 

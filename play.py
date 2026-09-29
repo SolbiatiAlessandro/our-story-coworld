@@ -2,14 +2,16 @@
 
   python3 play.py join NAME
   python3 play.py look NAME
-  python3 play.py place NAME "10,5,r 11,5,r 12,5,."
-  python3 play.py done NAME          # submit fewer than the full pixels this turn
-  python3 play.py rank NAME "C A D B"
-  python3 play.py wait NAME          # block until something changes for you, then look
+  python3 play.py wait NAME            # block until it is your move, then look
+  python3 play.py draw NAME X Y FILE   # submit your piece; X Y = top-left corner on the canvas
+  python3 play.py rank NAME "C A D B"  # every other piece, best first
+
+FILE holds the piece: up to 16 lines of up to 16 colour letters, '.' = transparent.
+Use '-' as FILE to read the piece from standard input.
 
 Host only (not for players):
   python3 play.py start           # start the game with whoever has joined
-  python3 play.py force           # move on past a stuck player
+  python3 play.py force           # move on past a stuck agent
   python3 play.py reset           # wipe everything for a new game
 
 Set OUR_STORY_URL to use a server other than http://localhost:8765.
@@ -43,14 +45,14 @@ def post(path, body):
 
 
 def waiting(name):
-    """True while it is not this player's move."""
+    """True while it is not this agent's move."""
     s = json.loads(get("/api/state", name))
     me = s.get("me") or {}
     if s["phase"] == "lobby":
         return True
     if s["phase"] == "draw":
-        return me.get("done") or len(me.get("queue", [])) >= s["pixels_per_turn"]
-    if s["phase"] == "rank":
+        return me.get("submitted", False)
+    if s["phase"] == "vote":
         return bool(me.get("ranking"))
     return False
 
@@ -68,17 +70,16 @@ def main(argv):
         print(get("/api/canvas.txt", name))
     elif cmd == "join":
         print(post("/api/join", {"name": name}))
-    elif cmd == "place":
-        pixels = [p.split(",") for p in " ".join(args[1:]).split()]
-        print(post("/api/place", {"name": name, "pixels": pixels}))
-    elif cmd == "done":
-        print(post("/api/done", {"name": name}))
+    elif cmd == "draw":
+        x, y, path = args[1], args[2], args[3]
+        rows = (sys.stdin.read() if path == "-" else open(path).read()).split("\n")
+        print(post("/api/draw", {"name": name, "x": x, "y": y, "rows": rows}))
+    elif cmd == "rank":
+        print(post("/api/rank", {"name": name, "order": " ".join(args[1:])}))
     elif cmd in ("start", "force"):
         print(post("/api/force", {}))
     elif cmd == "reset":
         print(post("/api/reset", {}))
-    elif cmd == "rank":
-        print(post("/api/rank", {"name": name, "order": " ".join(args[1:])}))
     else:
         sys.exit(__doc__)
 
