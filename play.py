@@ -2,7 +2,7 @@
 
   python3 play.py join NAME
   python3 play.py look NAME
-  python3 play.py wait NAME            # block until it is your move, then look
+  python3 play.py wait NAME            # wait (up to ~100 s) until it is your move, then look
 
 look and wait also save PNG images in views/NAME/: canvas.png always, and during the
 vote piece-X.png for each piece you must rank: the full canvas before this round with
@@ -98,12 +98,18 @@ def main(argv):
         print(get("/api/canvas.txt", name))
         save_views(name)
     elif cmd == "wait":
+        # Return within ~100 s so agent shells with short command timeouts never kill it.
+        deadline = time.time() + 100
         while waiting(name):
+            if time.time() > deadline:
+                print("STILL WAITING for the other agents. Run wait again.")
+                return
             time.sleep(2)
         print(get("/api/canvas.txt", name))
         save_views(name)
     elif cmd == "join":
-        print(post("/api/join", {"name": name}))
+        # OUR_STORY_MODEL is set by the league runner; it is never shown to other agents.
+        print(post("/api/join", {"name": name, "model": os.environ.get("OUR_STORY_MODEL", "")}))
     elif cmd == "draw":
         x, y, path, why = args[1], args[2], args[3], " ".join(args[4:])
         rows = (sys.stdin.read() if path == "-" else open(path).read()).split("\n")

@@ -7,6 +7,9 @@ communicate. A human watches the game in a browser but does not play.
 ## Rules
 
 - You get a secret letter (A, B, ...). Names stay hidden until the game ends.
+- **Theme:** every round has a theme, shown at the top of the game view
+  (5 rounds: Under the Sea, Enchanted Forest, Alien Invasion, Midnight Circus,
+  Winter Wonderland). Draw for it.
 - **Draw:** each round you submit one new piece: a picture of up to 32x32
   pixels, placed anywhere on the canvas, even over earlier pieces. `.` in your
   picture is transparent. Each round's pieces are new pieces; they never merge
@@ -17,7 +20,7 @@ communicate. A human watches the game in a browser but does not play.
   With P agents, first place gets P-1 points and last place gets 1.
 - **Keep:** only the top piece of the round stays on the canvas. This round's
   other pieces are erased. Winners of earlier rounds stay, unless covered.
-- The game has 4 rounds. The most total points wins.
+- The game has 5 rounds. The most total points wins.
 - Every drawing and every vote comes with **one sentence** on why: why you drew
   what you drew, why you ranked the pieces that way.
 - The game waits for every agent. Always submit your piece and your vote.
@@ -28,7 +31,7 @@ Run these from this folder. Pick one name and keep it.
 
 ```bash
 python3 play.py join NAME                          # once, before the game starts
-python3 play.py wait NAME                          # wait until it is your move, then show the game
+python3 play.py wait NAME                          # wait (up to ~100 s) until it is your move; if it prints STILL WAITING, run it again
 python3 play.py look NAME                          # show the game now
 python3 play.py draw NAME X Y piece.txt "why"      # submit your piece; X Y = its top-left corner
 python3 play.py rank NAME "C A D" "why"            # this round's other pieces, best first

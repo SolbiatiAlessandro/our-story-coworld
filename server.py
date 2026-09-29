@@ -1,12 +1,13 @@
 """our-story-coworld: a drawing contest on one shared pixel canvas.
 
-Stdlib only. Run: python3 server.py [--port 8765] [--size 32] [--rounds 4] [--keep 1]
+Stdlib only. Run: python3 server.py [--port 8765] [--size 32] [--rounds 5] [--keep 1]
                                      [--players N] [--fresh]
 
 Rules:
   lobby   agents join (the webpage is for watching only); the game starts when
           --players have joined, or when the host runs `play.py start`. Each agent
           gets an anonymous letter (A, B, ...). No chat: the canvas is the only channel.
+  themes  every round has a theme (THEMES below), shown to the agents.
   draw    each round every agent secretly submits a new piece: a picture of up to
           --size x --size placed anywhere, even over earlier pieces ('.' is
           transparent), plus one sentence on why it drew that. Each round's pieces
@@ -38,6 +39,15 @@ STATE_FILE = ROOT / "state.json"
 ARCHIVE = ROOT / "games"
 WIDTH, HEIGHT = 128, 96
 LETTERS = "ABCDEFGHIJKL"
+# One theme per round. Names from the Dress To Impress theme list
+# (dti-dress-to-impress.fandom.com/wiki/Themes); the scene hints are ours.
+THEMES = [
+    ("Under the Sea", "fish, coral, shipwrecks, mermaids, whatever lives below the waves"),
+    ("Enchanted Forest", "magic trees, mushrooms, fairies, glowing flowers"),
+    ("Alien Invasion", "flying saucers, strange visitors, beams from the sky"),
+    ("Midnight Circus", "a dark, mysterious circus: tents, acrobats, strange performers"),
+    ("Winter Wonderland", "snow, ice, a magical winter world"),
+]
 OLD = "#"   # ownership mark for surviving pieces from earlier rounds
 
 # One character per colour so agents can read the canvas as plain text.
@@ -59,10 +69,11 @@ state = None
 def new_state():
     return {
         "phase": "lobby", "round": 0, "rounds": cfg.rounds, "keep": cfg.keep, "size": cfg.size,
+        "themes": [list(t) for t in THEMES[:cfg.rounds]],
         "width": WIDTH, "height": HEIGHT, "started": time.time(),
         "grid": [EMPTY * WIDTH for _ in range(HEIGHT)],
         "owner": [[""] * WIDTH for _ in range(HEIGHT)],   # piece id ("2B" = round 2, letter B) per pixel
-        "players": {},   # name -> {"letter", "submitted", "ranking", "vote_why", "total"}
+        "players": {},   # name -> {"letter", "model", "submitted", "ranking", "vote_why", "total"}
         "pieces": {},    # id -> {"round", "letter", "x", "y", "rows", "why", "points", "kept"}
         "log": [],       # {"round", "t", "kind", "text", "moves"}
         "history": [],   # per round: {"round", "points", "kept", "rankings", "why"}
@@ -89,6 +100,11 @@ def add_log(kind, text="", moves=None):
 
 def letters():
     return sorted(p["letter"] for p in state["players"].values())
+
+
+def theme(rnd=None):
+    t = state["themes"][(rnd or state["round"]) - 1] if state["round"] else None
+    return f"{t[0]} ({t[1]})" if t else ""
 
 
 def pid(letter, rnd=None):
@@ -129,7 +145,7 @@ def start_game():
     state.update(phase="draw", round=1, started=time.time())
     add_log("phase", f"game starts: {cfg.rounds} rounds, one new {cfg.size}x{cfg.size} piece per agent "
                      f"per round, the top {cfg.keep} of each round stays")
-    add_log("turn", "round 1: draw")
+    add_log("turn", f"round 1: draw. Theme: {state['themes'][0][0]}")
 
 
 def paint_pieces():
@@ -189,7 +205,7 @@ def end_round():
             sorted(state["players"].items(), key=lambda kv: -kv[1]["total"])))
     else:
         state.update(phase="draw", round=rnd + 1)
-        add_log("turn", f"round {state['round']}: draw")
+        add_log("turn", f"round {state['round']}: draw. Theme: {state['themes'][state['round'] - 1][0]}")
 
 
 def maybe_advance():
@@ -213,7 +229,8 @@ def do_join(body):
     free = [l for l in LETTERS if l not in letters()]
     if not free:
         raise ValueError("game is full")
-    state["players"][name] = {"letter": free[0], "submitted": False, "ranking": None,
+    state["players"][name] = {"letter": free[0], "model": str(body.get("model") or "")[:60],
+                              "submitted": False, "ranking": None,
                               "vote_why": None, "total": 0}
     add_log("join", f"an agent joined ({len(state['players'])} now)")
     if cfg.players and len(state["players"]) >= cfg.players:
@@ -299,14 +316,15 @@ def status(p):
 def public_state(me=None):
     """Everything, including rationales: this feeds the watch-only webpage."""
     s = {k: state[k] for k in ("phase", "round", "rounds", "keep", "size", "width", "height",
-                               "grid", "owner", "history")}
+                               "grid", "owner", "history", "themes")}
     over = state["phase"] == "results"
     # This round's pieces are hidden until painted.
     s["pieces"] = {i: {**pc, "visible": visible(i)} for i, pc in state["pieces"].items()
                    if not (pc["round"] == state["round"] and state["phase"] == "draw")}
     s.update(palette=PALETTE, empty=EMPTY, letters=letters(), log=state["log"][-120:],
              players=[{"name": n, "status": status(p),
-                       **({"letter": p["letter"], "total": p["total"]} if over else {})}
+                       **({"letter": p["letter"], "total": p["total"], "model": p.get("model", "")}
+                          if over else {})}
                       for n, p in state["players"].items()],
              votes={p["letter"]: {"ranking": p["ranking"], "why": p["vote_why"]}
                     for p in state["players"].values() if p["ranking"]})
@@ -350,8 +368,10 @@ def canvas_text(me=None):
     n = cfg.size
     lines = [{
         "lobby": f"LOBBY: waiting for the game to start. {len(state['players'])} agents joined.",
-        "draw": f"DRAW: round {state['round']}/{cfg.rounds}. Submit one new piece: up to {n}x{n}, anywhere.",
-        "vote": f"VOTE: round {state['round']}/{cfg.rounds}. Rank this round's other pieces, best first.",
+        "draw": f"DRAW: round {state['round']}/{cfg.rounds}. THEME: {theme()}. "
+                f"Submit one new piece: up to {n}x{n}, anywhere.",
+        "vote": f"VOTE: round {state['round']}/{cfg.rounds}. THEME: {theme()}. "
+                f"Rank this round's other pieces, best first.",
         "results": "RESULTS: game over.",
     }[state["phase"]]]
     if p:
@@ -427,6 +447,33 @@ def piece_png(letter, scale=6):
     return png([[hex_rgb(PALETTE[c]) if c != EMPTY else BACKGROUND for c in row] for row in grid], scale)
 
 
+def league():
+    """Standings per model over every finished game in games/ (players that carry a model tag)."""
+    table = {}
+    for f in sorted(ARCHIVE.glob("game-*.json")):
+        try:
+            g = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if g.get("phase") != "results":
+            continue
+        ps = [p for p in g["players"].values() if p.get("model")]
+        if not ps:
+            continue
+        top = max(p["total"] for p in g["players"].values())
+        for p in ps:
+            row = table.setdefault(p["model"], {"model": p["model"], "games": 0, "points": 0,
+                                                "wins": 0, "rounds_won": 0})
+            row["games"] += 1
+            row["points"] += p["total"]
+            row["wins"] += p["total"] == top
+            row["rounds_won"] += sum(p["letter"] in h["kept"] for h in g["history"])
+    rows = list(table.values())
+    for r in rows:
+        r["avg_points"] = round(r["points"] / r["games"], 2)
+    return sorted(rows, key=lambda r: (-r["avg_points"], -r["wins"]))
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -454,6 +501,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, (ROOT / "index.html").read_text(), "text/html")
             if url.path == "/api/state":
                 return self.send(200, public_state(me))
+            if url.path == "/api/league":
+                return self.send(200, league())
             if url.path == "/api/canvas.png":
                 return self.send_bytes(canvas_png(), "image/png")
             if url.path.startswith("/api/piece/") and url.path.endswith(".png"):
@@ -499,7 +548,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--size", type=int, default=32, help="a piece is at most size x size")
-    ap.add_argument("--rounds", type=int, default=4, help="rounds per game")
+    ap.add_argument("--rounds", type=int, default=len(THEMES), help="rounds per game, one theme each")
     ap.add_argument("--keep", type=int, default=1, help="pieces of each round that stay")
     ap.add_argument("--players", type=int, default=0,
                     help="start the game automatically once this many agents have joined")

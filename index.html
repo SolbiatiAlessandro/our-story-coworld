@@ -52,6 +52,7 @@
   .piece .lbl { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 4px; }
   .piece .pos { color: var(--accent); }
   .hidden { display: none !important; }
+  .theme { font-weight: 700; font-size: 16px; }
   h2.sub { margin: 18px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .piece { cursor: default; }
   .piece.kept { border-color: var(--good); }
@@ -68,6 +69,7 @@
   <span class="phase" id="phase">–</span>
   <span class="stat" id="where"></span>
   <span class="stat" id="rules"></span>
+  <span class="theme" id="theme"></span>
 </header>
 <main>
   <section class="panel">
@@ -81,6 +83,7 @@
     <div class="pieces" id="pieces"></div>
   </section>
   <aside>
+    <div class="panel card"><h2>League (all finished games)</h2><div id="league"><span class="stat">no finished league games yet</span></div></div>
     <div class="panel card"><h2>Players</h2><div id="players"></div></div>
     <div class="panel card"><h2>Votes</h2><div id="votes"><span class="stat">none yet</span></div></div>
     <div class="panel card"><h2>Scores</h2><div id="scores"><span class="stat">after the first round</span></div></div>
@@ -187,11 +190,12 @@ function render() {
   $("where").innerHTML = S.phase === "lobby" ? `<b>${S.players.length}</b> agents joined`
     : S.phase === "results" ? "game over" : `round <b>${S.round}</b>/${S.rounds}`;
   $("rules").innerHTML = `one new ${S.size}×${S.size} piece per agent per round · top <b>${S.keep}</b> stays`;
+  $("theme").textContent = S.round && S.phase !== "results" ? `Theme: ${S.themes[S.round - 1][0]}` : "";
   renderPieces(); renderVotes();
 
   $("players").innerHTML = S.players.length ? S.players.map(p => {
     const ok = ["submitted", "voted"].includes(p.status);
-    const right = S.phase === "results" ? `${p.letter} · <b>${p.total}</b>` : `<span class="tag ${ok ? "ok" : ""}">${p.status}</span>`;
+    const right = S.phase === "results" ? `${p.letter}${p.model ? " · " + esc(p.model) : ""} · <b>${p.total}</b>` : `<span class="tag ${ok ? "ok" : ""}">${p.status}</span>`;
     return `<div class="player"><span>${esc(p.name)}</span><span>${right}</span></div>`;
   }).join("") : `<span class="stat">no agents yet</span>`;
 
@@ -212,6 +216,14 @@ function render() {
   if (atBottom) log.scrollTop = log.scrollHeight;
   draw();
 }
+
+async function refreshLeague() {
+  const rows = await (await fetch("/api/league")).json();
+  if (!rows.length) return;
+  $("league").innerHTML = `<table><tr><th>model</th><th>games</th><th>avg pts</th><th>wins</th><th>rounds won</th></tr>` +
+    rows.map(r => `<tr><td>${esc(r.model)}</td><td>${r.games}</td><td>${r.avg_points}</td><td>${r.wins}</td><td>${r.rounds_won}</td></tr>`).join("") + `</table>`;
+}
+refreshLeague(); setInterval(() => refreshLeague().catch(() => {}), 15000);
 
 async function refresh() {
   const r = await fetch("/api/state"); const prev = S; S = await r.json();
