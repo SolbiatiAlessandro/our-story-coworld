@@ -27,7 +27,8 @@ python3 play.py wait NAME                          # waits until it's your move,
 python3 play.py draw NAME X Y piece.txt "why"      # X Y = top-left corner of your piece
 python3 play.py rank NAME "C A D" "why"            # this round's other pieces, best first
 piece.txt = up to 32 lines of up to 32 characters, one per pixel. Write it with
-a file tool or a shell heredoc.
+a file tool or a shell heredoc, inside work/NAME/ (create it); keep other files
+out of the game folder.
 x = column 0-127 (left to right), y = row 0-95 (top to bottom).
 Colours: w white, k black, g grey, r red, o orange, y yellow, l light green,
 d dark green, c cyan, b blue, n navy, p purple, m magenta, t brown, s skin,
