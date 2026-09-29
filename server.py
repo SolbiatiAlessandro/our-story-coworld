@@ -134,6 +134,7 @@ def start_game():
 
 def paint_pieces():
     """Paint this round's pieces in a random order, then open the vote."""
+    state["base_grid"] = list(state["grid"])   # the canvas before this round's pieces
     mine = [p for p in state["players"].values() if p["submitted"]]
     random.shuffle(mine)
     moves = []
@@ -411,20 +412,19 @@ def canvas_png(scale=6):
                 for row in state["grid"]], scale)
 
 
-def piece_png(letter, scale=12):
-    """This round's piece as it now shows on the canvas, in its size x size placement box."""
+def piece_png(letter, scale=6):
+    """The full canvas as it was before this round, with only this piece painted on it,
+    whole: what the canvas would look like if this piece wins, without the other new pieces."""
     pc = state["pieces"].get(pid(letter))
     if not pc:
         raise ValueError(f"no piece {letter} this round")
-    n, me = cfg.size, pid(letter)
-    rows = []
-    for y in range(pc["y"], pc["y"] + n):
-        row = []
-        for x in range(pc["x"], pc["x"] + n):
-            on = 0 <= x < WIDTH and 0 <= y < HEIGHT and state["owner"][y][x] == me
-            row.append(hex_rgb(PALETTE[state["grid"][y][x]]) if on else BACKGROUND)
-        rows.append(row)
-    return png(rows, scale)
+    grid = [list(r) for r in state.get("base_grid") or state["grid"]]
+    for dy, row in enumerate(pc["rows"]):
+        for dx, c in enumerate(row):
+            x, y = pc["x"] + dx, pc["y"] + dy
+            if c != EMPTY and 0 <= x < WIDTH and 0 <= y < HEIGHT:
+                grid[y][x] = c
+    return png([[hex_rgb(PALETTE[c]) if c != EMPTY else BACKGROUND for c in row] for row in grid], scale)
 
 
 class Handler(BaseHTTPRequestHandler):

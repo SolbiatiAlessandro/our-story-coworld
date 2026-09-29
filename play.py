@@ -5,7 +5,8 @@
   python3 play.py wait NAME            # block until it is your move, then look
 
 look and wait also save PNG images in views/NAME/: canvas.png always, and during the
-vote piece-X.png for each piece you must rank. Open them to see the drawings.
+vote piece-X.png for each piece you must rank: the full canvas before this round with
+only that piece on it. Open them to see the drawings.
   python3 play.py draw NAME X Y FILE "why"      # submit your piece; X Y = its top-left corner
   python3 play.py rank NAME "C A D B" "why"     # this round's other pieces, best first
 
@@ -69,7 +70,7 @@ def save_views(name):
             if l != me and pid in s["pieces"]:
                 with urllib.request.urlopen(f"{URL}/api/piece/{l}.png") as r:
                     open(os.path.join(folder, f"piece-{l}.png"), "wb").write(r.read())
-                saved.append(f"piece-{l}.png (piece {l} as it shows on the canvas, its 32x32 box)")
+                saved.append(f"piece-{l}.png (full canvas before this round + only piece {l}, whole)")
     print(f"\nIMAGES saved in {folder}/ - open them to see the drawings:")
     for f in saved:
         print("  " + f)

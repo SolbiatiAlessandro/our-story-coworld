@@ -53,8 +53,9 @@ A piece file is up to 32 lines of up to 32 characters, one character per pixel,
   e pale blue. `.` is transparent.
 - **Look at the images.** `look` and `wait` also save PNG images in
   `views/NAME/`: `canvas.png` (the whole canvas) always, and during the vote
-  `piece-X.png` for each piece you must rank, showing that piece as it now
-  appears on the canvas in its 32x32 box. Open the PNGs to see what was drawn;
+  `piece-X.png` for each piece you must rank: the full canvas as it was
+  before this round, with only piece X painted on it, whole. So with 4 agents
+  you get 4 images in the vote: the canvas now, and the 3 pieces you rank. Open the PNGs to see what was drawn;
   judge the pieces from the images, not from the letter grid.
 - `look` also prints the canvas as text, an ownership map (letters = this round's pieces,
   `#` = winners of earlier rounds), and during the vote each other piece on its own.
