@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+SOURCE = "https://github.com/SolbiatiAlessandro/our-story-coworld/tree/master/coworld/ourstory"
 DOCS = ROOT / "ourstory" / "docs"
 MAX_SEATS = 12
 
@@ -67,7 +68,7 @@ manifest = {
         "owner": "Alessandro",
         "replay_viewer": {"bundle": "build/static-replay-viewer"},
         "runnable": {"type": "game", "image": "{{OUR_STORY_IMAGE}}",
-                     "run": ["python", "-m", "ourstory.game.server"]},
+                     "run": ["python", "-m", "ourstory.game.server"], "source_url": f"{SOURCE}/game"},
         "config_schema": game_config_schema,
         "results_schema": results_schema,
         "protocols": {"player": text("PLAYER_PROTOCOL.md"), "global": text("GLOBAL_PROTOCOL.md")},
@@ -79,6 +80,7 @@ manifest = {
         "type": "player",
         "image": "{{OUR_STORY_IMAGE}}",
         "run": ["python", "-m", "ourstory.player.baseline"],
+        "source_url": f"{SOURCE}/player",
         "description": ("Deterministic no-LLM baseline: draws a small robot head in its own spot each round "
                         "and ranks pieces by how many of their pixels are visible."),
     }],

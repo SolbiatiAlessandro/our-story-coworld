@@ -21,7 +21,8 @@
         "python",
         "-m",
         "ourstory.game.server"
-      ]
+      ],
+      "source_url": "https://github.com/SolbiatiAlessandro/our-story-coworld/tree/master/coworld/ourstory/game"
     },
     "config_schema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -200,6 +201,7 @@
         "-m",
         "ourstory.player.baseline"
       ],
+      "source_url": "https://github.com/SolbiatiAlessandro/our-story-coworld/tree/master/coworld/ourstory/player",
       "description": "Deterministic no-LLM baseline: draws a small robot head in its own spot each round and ranks pieces by how many of their pixels are visible."
     }
   ],
