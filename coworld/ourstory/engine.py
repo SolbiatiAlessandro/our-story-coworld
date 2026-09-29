@@ -106,7 +106,8 @@ class Game:
             rows = rows.split("\n")
         if not isinstance(rows, list) or not all(isinstance(r, str) for r in rows):
             raise InvalidAction("rows must be a list of strings")
-        rows = [r.rstrip() for r in rows]
+        # Models often use spaces or upper case; read a space as transparent and letters case-blind.
+        rows = [r.rstrip().replace(" ", EMPTY).lower() for r in rows]
         while rows and not rows[-1]:
             rows.pop()
         n = self.size

@@ -47,7 +47,7 @@ async def main() -> None:
             msg = json.loads(raw)
             if msg["type"] == "final":
                 return
-            if msg["type"] != "observation":
+            if msg["type"] != "observation" or msg.get("phase") not in ("draw", "vote"):
                 continue
             if msg["phase"] == "draw":
                 reply = {"step": msg["step"], "piece": piece(msg["slot"], msg["round"], msg["width"], msg["height"]),

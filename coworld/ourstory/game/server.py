@@ -154,7 +154,8 @@ async def player_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     state.sockets[slot] = websocket
     await websocket.send_json(welcome(slot))
-    if state.started and not state.done and slot not in state.acted:
+    # A late or reconnecting player gets the open step; never an observation before round 1 opens.
+    if state.step > 0 and game.phase in ("draw", "vote") and not state.done and slot not in state.acted:
         await websocket.send_json(observation(slot))
     if len(state.sockets) == len(TOKENS) and not state.started:
         state.started = True
@@ -289,7 +290,7 @@ def observation(slot: int) -> dict[str, Any]:
     }
     images: dict[str, str] = {}
     if INCLUDE_IMAGES:
-        images["canvas"] = png_b64(game.grid)
+        images["canvas"] = png_b64(game.grid, scale=4)
     if game.phase == "vote":
         obs["rank"] = game.rankable(slot)
         obs["pieces"] = {l: {**{k: v for k, v in game.pieces[f"{game.round}{l}"].to_json().items()
@@ -297,7 +298,7 @@ def observation(slot: int) -> dict[str, Any]:
                              "visible_pixels": game.visible(f"{game.round}{l}")} for l in obs["rank"]}
         if INCLUDE_IMAGES:
             for l in obs["rank"]:
-                images[f"piece_{l}"] = png_b64(game.piece_alone_grid(l))
+                images[f"piece_{l}"] = png_b64(game.piece_alone_grid(l), scale=4)
         obs["reply"] = {"step": state.step, "ranking": obs["rank"], "why": "one sentence"}
     else:
         obs["reply"] = {"step": state.step, "piece": {"x": 0, "y": 0, "rows": ["...", ".r.", "..."]},

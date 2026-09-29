@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 import sys
 from typing import Any
 
@@ -35,6 +34,10 @@ def log(*args: Any) -> None:
     print("[llm_player]", *args, file=sys.stderr, flush=True)
 
 
+class BadReply(ValueError):
+    """The model answered, but not with usable JSON; tell it and ask again."""
+
+
 def image(b64: str) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}
 
@@ -51,7 +54,7 @@ class Brain:
             f"{w.get('rules', '')}\n\nYou are player {w.get('letter')} of {w.get('players')}. "
             f"Canvas: {w.get('width')} wide x {w.get('height')} tall; x is the column (0 left), y the row "
             f"(0 top). A piece is at most {w.get('size')} rows of at most {w.get('size')} characters. "
-            f"Colours: {colours}; '.' is transparent. Your goal is the most points: make pieces the other "
+            f"Colours: {colours}; '.' is transparent (never use spaces). Each row is a JSON string. Your goal is the most points: make pieces the other "
             f"players will rank highly for the theme, and rank others honestly or strategically as you see fit. "
             f"Answer with ONE JSON object only, no other text."
         )
@@ -59,7 +62,7 @@ class Brain:
     def call(self, content: list[dict[str, Any]]) -> str:
         if not ENDPOINT:
             raise RuntimeError("AWS_ENDPOINT_URL_BEDROCK_RUNTIME is not set: upload the policy with --use-bedrock")
-        body = {"model": MODEL, "max_tokens": 4000,
+        body = {"model": MODEL, "max_tokens": 6000, "response_format": {"type": "json_object"},
                 "messages": [{"role": "system", "content": self.system()}, {"role": "user", "content": content}]}
         req = urllib.request.Request(f"{ENDPOINT}/v1/chat/completions", json.dumps(body).encode(),
                                      {"Content-Type": "application/json", "Authorization": "Bearer sidecar"})
@@ -101,10 +104,15 @@ class Brain:
 
     def act(self, obs: dict[str, Any], error: str | None = None) -> dict[str, Any]:
         text = self.call(self.content(obs, error))
-        match = re.search(r"\{.*\}", text, re.S)
-        if not match:
-            raise ValueError(f"no JSON in model reply: {text[:200]!r}")
-        reply = json.loads(match.group(0))
+        start = text.find("{")
+        if start < 0:
+            raise BadReply(f"your reply had no JSON object: {text[:200]!r}")
+        try:
+            reply, _ = json.JSONDecoder().raw_decode(text[start:])
+        except json.JSONDecodeError as e:
+            raise BadReply(f"your reply was not valid JSON ({e})") from None
+        if not isinstance(reply, dict):
+            raise BadReply("your reply must be one JSON object")
         reply["step"] = obs["step"]
         return reply
 
@@ -124,7 +132,7 @@ async def main() -> None:
             if kind == "welcome":
                 brain.welcome = msg
                 continue
-            if kind == "observation":
+            if kind == "observation" and msg.get("phase") in ("draw", "vote"):
                 obs, tries, error = msg, 0, None
             elif kind == "error" and obs is not None and msg.get("step") == obs["step"]:
                 error = msg["message"]
@@ -141,7 +149,20 @@ async def main() -> None:
             else:
                 try:
                     reply = await asyncio.to_thread(brain.act, obs, error)
-                except Exception as e:   # model or parse failure: log the body, then fall back
+                except BadReply as e:    # counts as a try; the model sees what was wrong
+                    log("bad reply:", str(e)[:300])
+                    error = str(e)
+                    while tries < MAX_TRIES:
+                        tries += 1
+                        try:
+                            reply = await asyncio.to_thread(brain.act, obs, error)
+                            break
+                        except BadReply as e2:
+                            log("bad reply:", str(e2)[:300])
+                            error = str(e2)
+                    else:
+                        reply = fallback(obs)
+                except Exception as e:   # model or transport failure: log the body, then fall back
                     log("model call failed:", repr(e)[:500])
                     reply = fallback(obs)
             pending_why = reply.get("why", "") if obs["phase"] == "draw" else ""
