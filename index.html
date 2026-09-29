@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #f6f3ee; --panel: #ffffff; --ink: #1d1b18; --muted: #7a746b;
-    --line: #e4ded4; --accent: #2f6fdf; --flash: #ff3fa4;
+    --line: #e4ded4; --accent: #2f6fdf; --good: #2e8b3d; --bad: #e23b3b;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #16150f; --panel: #211f19; --ink: #ece7dd; --muted: #9a9387; --line: #34312a; }
@@ -16,80 +16,110 @@
   body { margin: 0; background: var(--bg); color: var(--ink);
          font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
   header { display: flex; align-items: baseline; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 18px; letter-spacing: .02em; }
+  h1 { margin: 0; font-size: 18px; }
+  .phase { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--accent); color: #fff; }
   .stat { color: var(--muted); }
   .stat b { color: var(--ink); font-variant-numeric: tabular-nums; }
   main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
-  .board { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-  .wrap { position: relative; width: 100%; }
-  canvas { display: block; width: 100%; image-rendering: pixelated; cursor: crosshair; border-radius: 4px; }
-  .tools { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  canvas#cv { display: block; width: 100%; image-rendering: pixelated; cursor: crosshair; border-radius: 4px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
   .swatch { width: 24px; height: 24px; border-radius: 5px; border: 2px solid var(--line); cursor: pointer; position: relative; }
   .swatch.on { border-color: var(--ink); transform: scale(1.12); }
   .swatch span { position: absolute; inset: auto 0 -16px; text-align: center; font: 10px ui-monospace, monospace; color: var(--muted); }
   input { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
   button { font: inherit; padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  #hover { font: 12px ui-monospace, monospace; color: var(--muted); min-width: 110px; }
+  button:disabled { opacity: .45; cursor: default; }
+  #hover { font: 12px ui-monospace, monospace; color: var(--muted); }
+  #msg { font-size: 13px; min-height: 18px; margin-top: 8px; }
+  #msg.err { color: var(--bad); }
   aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
   .card h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .player { display: flex; justify-content: space-between; padding: 3px 0; }
-  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 2px; }
-  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
-  #log { max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-  .ev { padding-bottom: 6px; border-bottom: 1px dashed var(--line); word-wrap: break-word; }
-  .ev .who { font-weight: 600; }
-  .ev .meta { color: var(--muted); font-size: 12px; }
-  .ev.turn { color: var(--muted); font-size: 12px; text-align: center; border: 0; }
-  .dots { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 4px; }
-  .dots i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
-  #err { color: #e23b3b; font-size: 12px; min-height: 16px; }
+  .tag { font-size: 12px; padding: 0 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.ok { color: var(--good); border-color: var(--good); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td, th { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  #log { max-height: 36vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  #log .turn { color: var(--muted); text-align: center; font-size: 12px; margin-top: 4px; }
+  #log .phase-ev { font-weight: 600; }
+  .pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .piece { border: 2px solid var(--line); border-radius: 8px; padding: 6px; cursor: pointer; position: relative; background: var(--bg); }
+  .piece.picked { border-color: var(--accent); }
+  .piece canvas { width: 100%; image-rendering: pixelated; display: block; border-radius: 3px; }
+  .piece .lbl { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 4px; }
+  .piece .pos { color: var(--accent); }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <header>
   <h1>Our Story</h1>
-  <span class="stat">turn <b id="turn">–</b></span>
-  <span class="stat"><b id="ppt">–</b> pixels per player per turn</span>
+  <span class="phase" id="phase">–</span>
+  <span class="stat" id="where"></span>
+  <span class="stat" id="rules"></span>
 </header>
 <main>
-  <section class="board">
-    <div class="wrap"><canvas id="cv"></canvas></div>
-    <div class="tools" id="palette"></div>
-    <div class="tools" style="margin-top:22px">
-      <input id="name" placeholder="your name" size="10">
-      <span class="stat">pending <b id="pending">0</b></span>
-      <button class="primary" id="send">Place</button>
-      <button id="clear">Clear pending</button>
-      <button id="done">End my turn</button>
-      <button id="next" title="force the next turn if someone is stuck">Force next turn</button>
-      <span id="hover"></span>
+  <section class="panel">
+    <canvas id="cv"></canvas>
+
+    <div id="joinBox" class="row">
+      <input id="name" placeholder="your name" size="12">
+      <button id="joinBtn">Join</button>
+      <span class="stat" id="meLine"></span>
     </div>
-    <div class="tools">
-      <input id="say" placeholder="say something to the other players" style="flex:1">
-      <button id="sayBtn">Say</button>
+
+    <div id="drawBox">
+      <div class="row" id="palette"></div>
+      <div class="row" style="margin-top:22px">
+        <span class="stat">selected <b id="pending">0</b>/<b id="budget">16</b></span>
+        <button class="primary" id="submit">Submit turn</button>
+        <button id="clear">Clear selection</button>
+        <label class="stat"><input type="checkbox" id="showOwner"> show owners</label>
+        <span id="hover"></span>
+      </div>
     </div>
-    <div id="err"></div>
+
+    <div id="rankBox" class="hidden">
+      <div class="row"><span>Click the pieces from best to worst, then submit.</span>
+        <button class="primary" id="rankSubmit">Submit ranking</button>
+        <button id="rankClear">Start over</button></div>
+      <div class="pieces" id="pieces"></div>
+    </div>
+
+    <div class="row" style="border-top:1px solid var(--line); padding-top:10px; margin-top:14px">
+      <span class="stat">host:</span>
+      <button id="force">Start game</button>
+      <button id="newGame">New game</button>
+    </div>
+    <div id="msg"></div>
   </section>
   <aside>
-    <div class="card"><h2>Players</h2><div id="players"><span class="stat">nobody yet</span></div></div>
-    <div class="card"><h2>Story so far</h2><div id="log"></div></div>
+    <div class="panel card"><h2>Players</h2><div id="players"></div></div>
+    <div class="panel card"><h2>Scores</h2><div id="scores"><span class="stat">after the first epoch</span></div></div>
+    <div class="panel card"><h2>What happened</h2><div id="log"></div></div>
   </aside>
 </main>
 <script>
 const $ = id => document.getElementById(id);
 const cv = $("cv"), ctx = cv.getContext("2d");
-let S = null, color = "r", pending = [], hover = null, lastLogLen = 0, flashes = [];
-try { $("name").value = localStorage.getItem("ourstory-name") || ""; } catch (e) {}
+let S = null, color = "k", pending = [], hover = null, flashes = [], lastLogT = 0, picked = [];
+let myName = "";
+try { myName = localStorage.getItem("ourstory-name") || ""; $("name").value = myName; } catch (e) {}
 
 async function api(path, body) {
-  const r = await fetch(path, body ? { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) } : {});
+  const q = myName ? `?name=${encodeURIComponent(myName)}` : "";
+  const r = await fetch(path + (body ? "" : q), body ? { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) } : {});
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.status);
   return j;
 }
+function say(text, err) { $("msg").textContent = text; $("msg").className = err ? "err" : ""; }
+async function act(fn) { try { const m = await fn(); say(m || ""); await refresh(); } catch (e) { say(e.message, true); } }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const dark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 
 function buildPalette() {
   const p = $("palette"); p.innerHTML = "";
@@ -104,74 +134,168 @@ function buildPalette() {
   }
 }
 
+function paintGrid(c, cell, only) {
+  const g = c.getContext("2d");
+  g.fillStyle = dark() ? "#2a2721" : "#fbfaf7"; g.fillRect(0, 0, c.width, c.height);
+  S.grid.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === S.empty) return;
+    if (only && S.owner[y][x] !== only) return;
+    g.fillStyle = S.palette[ch]; g.fillRect(x * cell, y * cell, cell, cell);
+  }));
+}
+
 function draw() {
   if (!S) return;
-  const W = S.width, H = S.height, css = cv.clientWidth, cell = Math.floor(css * devicePixelRatio / W);
+  const W = S.width, H = S.height, cell = Math.max(4, Math.floor(cv.clientWidth * devicePixelRatio / W));
   cv.width = W * cell; cv.height = H * cell;
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  ctx.fillStyle = dark ? "#2a2721" : "#fbfaf7"; ctx.fillRect(0, 0, cv.width, cv.height);
-  S.grid.forEach((row, y) => [...row].forEach((c, x) => {
-    if (c !== S.empty) { ctx.fillStyle = S.palette[c]; ctx.fillRect(x * cell, y * cell, cell, cell); }
-  }));
-  ctx.strokeStyle = dark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.05)"; ctx.lineWidth = 1;
+  paintGrid(cv, cell);
+  ctx.strokeStyle = dark() ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.05)"; ctx.lineWidth = 1;
   for (let x = 0; x <= W; x++) { ctx.beginPath(); ctx.moveTo(x * cell + .5, 0); ctx.lineTo(x * cell + .5, cv.height); ctx.stroke(); }
   for (let y = 0; y <= H; y++) { ctx.beginPath(); ctx.moveTo(0, y * cell + .5); ctx.lineTo(cv.width, y * cell + .5); ctx.stroke(); }
+  if ($("showOwner").checked) {
+    ctx.font = `bold ${Math.floor(cell * .6)}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    S.owner.forEach((row, y) => [...row].forEach((o, x) => {
+      if (o === S.empty) return;
+      ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillText(o, x * cell + cell / 2 + 1, y * cell + cell / 2 + 1);
+      ctx.fillStyle = "#fff"; ctx.fillText(o, x * cell + cell / 2, y * cell + cell / 2);
+    }));
+  }
   const now = performance.now();
-  flashes = flashes.filter(f => now - f.t < 2500);
+  flashes = flashes.filter(f => now - f.t < 3000);
   for (const f of flashes) {
-    ctx.strokeStyle = `rgba(255,63,164,${1 - (now - f.t) / 2500})`; ctx.lineWidth = Math.max(2, cell / 5);
+    ctx.strokeStyle = `rgba(255,63,164,${1 - (now - f.t) / 3000})`; ctx.lineWidth = Math.max(2, cell / 5);
     ctx.strokeRect(f.x * cell + 1, f.y * cell + 1, cell - 2, cell - 2);
   }
-  for (const [x, y, c] of pending) {
-    ctx.fillStyle = c === "." ? (dark ? "#2a2721" : "#fbfaf7") : S.palette[c];
+  const queued = (S.me && S.me.queue) || [];
+  for (const [x, y, c] of queued.concat(pending)) {
+    ctx.fillStyle = c === "." ? (dark() ? "#2a2721" : "#fbfaf7") : S.palette[c];
     ctx.fillRect(x * cell, y * cell, cell, cell);
-    ctx.strokeStyle = "#2f6fdf"; ctx.lineWidth = 2; ctx.strokeRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2);
+    ctx.setLineDash([3, 2]); ctx.strokeStyle = "#2f6fdf"; ctx.lineWidth = 2;
+    ctx.strokeRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2); ctx.setLineDash([]);
   }
-  if (hover) { ctx.strokeStyle = dark ? "#fff" : "#000"; ctx.lineWidth = 1; ctx.strokeRect(hover[0] * cell + .5, hover[1] * cell + .5, cell - 1, cell - 1); }
+  if (hover) { ctx.strokeStyle = dark() ? "#fff" : "#000"; ctx.lineWidth = 1; ctx.strokeRect(hover[0] * cell + .5, hover[1] * cell + .5, cell - 1, cell - 1); }
 }
 
 function cellAt(ev) {
   const r = cv.getBoundingClientRect();
   return [Math.floor((ev.clientX - r.left) / r.width * S.width), Math.floor((ev.clientY - r.top) / r.height * S.height)];
 }
-cv.onmousemove = ev => { if (!S) return; hover = cellAt(ev); $("hover").textContent = `x ${hover[0]}  y ${hover[1]}`; draw(); };
+cv.onmousemove = ev => {
+  if (!S) return; hover = cellAt(ev);
+  const o = S.owner[hover[1]]?.[hover[0]];
+  $("hover").textContent = `x ${hover[0]}  y ${hover[1]}${o && o !== S.empty ? `  piece ${o}` : ""}`; draw();
+};
 cv.onmouseleave = () => { hover = null; $("hover").textContent = ""; draw(); };
 cv.onclick = ev => {
+  if (!S || S.phase !== "draw" || !S.me || S.me.done) return;
   const [x, y] = cellAt(ev), i = pending.findIndex(p => p[0] === x && p[1] === y);
-  if (i >= 0) pending.splice(i, 1);
-  else if (pending.length < S.pixels_per_turn) pending.push([x, y, color]);
-  $("pending").textContent = pending.length; draw();
+  const left = S.pixels_per_turn - S.me.queue.length;
+  if (i >= 0) pending.splice(i, 1); else if (pending.length < left) pending.push([x, y, color]);
+  $("pending").textContent = pending.length + S.me.queue.length; draw();
 };
+$("showOwner").onchange = draw;
 
-function myName() {
-  const n = $("name").value.trim();
-  if (!n) { $("err").textContent = "type a name first"; throw new Error("no name"); }
-  try { localStorage.setItem("ourstory-name", n); } catch (e) {}
-  return n;
+$("joinBtn").onclick = () => act(async () => {
+  myName = $("name").value.trim(); if (!myName) throw new Error("type a name first");
+  try { localStorage.setItem("ourstory-name", myName); } catch (e) {}
+  const r = await api("/api/join", { name: myName });
+  return `you are piece ${r.letter}`;
+});
+$("submit").onclick = () => act(async () => {
+  const total = S.me.queue.length + pending.length;
+  if (pending.length) await api("/api/place", { name: myName, pixels: pending });
+  pending = [];
+  // A full budget submits the turn by itself; calling done then would end the next turn.
+  if (total < S.pixels_per_turn) await api("/api/done", { name: myName });
+  return "turn submitted; waiting for the others";
+});
+$("clear").onclick = () => { pending = []; draw(); render(); };
+$("force").onclick = () => act(async () => { await api("/api/force", {}); });
+$("newGame").onclick = () => { if (confirm("Wipe the canvas and start a new game?")) act(async () => { await api("/api/reset", {}); picked = []; pending = []; }); };
+$("rankSubmit").onclick = () => act(async () => { await api("/api/rank", { name: myName, order: picked }); return "ranking submitted"; });
+$("rankClear").onclick = () => { picked = []; renderPieces(); };
+
+// The piece alone, cropped to its bounding box and padded to at least 16x16.
+function pieceCanvas(l) {
+  let x0 = S.width, y0 = S.height, x1 = -1, y1 = -1;
+  S.owner.forEach((row, y) => [...row].forEach((o, x) => {
+    if (o === l) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  }));
+  if (x1 < 0) { x0 = 0; y0 = 0; x1 = 15; y1 = 15; }
+  const side = Math.max(16, x1 - x0 + 1, y1 - y0 + 1);
+  const sx = Math.max(0, Math.min(S.width - side, Math.floor((x0 + x1 + 1 - side) / 2)));
+  const sy = Math.max(0, Math.min(S.height - side, Math.floor((y0 + y1 + 1 - side) / 2)));
+  const cell = Math.ceil(160 / side), c = document.createElement("canvas");
+  c.width = c.height = side * cell;
+  const g = c.getContext("2d");
+  g.fillStyle = dark() ? "#2a2721" : "#fbfaf7"; g.fillRect(0, 0, c.width, c.height);
+  for (let y = sy; y < Math.min(S.height, sy + side); y++)
+    for (let x = sx; x < Math.min(S.width, sx + side); x++)
+      if (S.owner[y][x] === l) { g.fillStyle = S.palette[S.grid[y][x]]; g.fillRect((x - sx) * cell, (y - sy) * cell, cell, cell); }
+  return c;
 }
-async function act(fn) { $("err").textContent = ""; try { await fn(); await refresh(); } catch (e) { if (e.message !== "no name") $("err").textContent = e.message; } }
-$("send").onclick = () => act(async () => { await api("/api/place", { name: myName(), pixels: pending }); pending = []; $("pending").textContent = 0; });
-$("clear").onclick = () => { pending = []; $("pending").textContent = 0; draw(); };
-$("done").onclick = () => act(() => api("/api/done", { name: myName() }));
-$("next").onclick = () => act(() => api("/api/next", {}));
-const say = () => act(async () => { const t = $("say").value.trim(); if (!t) return; await api("/api/say", { name: myName(), text: t }); $("say").value = ""; });
-$("sayBtn").onclick = say; $("say").onkeydown = e => { if (e.key === "Enter") say(); };
 
-function esc(s) { return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]); }
+let piecesKey = "";
+function renderPieces() {
+  const key = JSON.stringify([picked, S.me && S.me.ranking, S.letters, S.owner, dark()]);
+  if (key === piecesKey) return;
+  piecesKey = key;
+  const box = $("pieces"); box.innerHTML = "";
+  const others = S.letters.filter(l => !S.me || l !== S.me.letter);
+  for (const l of others) {
+    const d = document.createElement("div"), pos = picked.indexOf(l);
+    d.className = "piece" + (pos >= 0 ? " picked" : "");
+    d.innerHTML = `<div class="lbl"><span>Piece ${l} <span class="stat">${S.pieces[l]} px</span></span><span class="pos">${pos >= 0 ? "#" + (pos + 1) : ""}</span></div>`;
+    d.appendChild(pieceCanvas(l));
+    d.onclick = () => { if (pos >= 0) picked.splice(pos, 1); else picked.push(l); renderPieces(); };
+    box.appendChild(d);
+  }
+  $("rankSubmit").disabled = !S.me || picked.length !== others.length || !!S.me.ranking;
+}
 
+let lastPhaseKey = "";
 function render() {
-  $("turn").textContent = S.turn; $("ppt").textContent = S.pixels_per_turn;
-  const names = Object.keys(S.players);
-  $("players").innerHTML = names.length ? names.map(n => {
-    const p = S.players[n], fin = p.done || p.used >= S.pixels_per_turn, pct = fin ? 100 : 100 * p.used / S.pixels_per_turn;
-    return `<div class="player"><span>${esc(n)}</span><span class="stat">${fin ? "done" : `${p.used}/${S.pixels_per_turn} · thinking`}</span></div><div class="bar"><i style="width:${pct}%"></i></div>`;
+  const inGame = !!S.me;
+  $("phase").textContent = S.phase;
+  $("where").innerHTML = S.phase === "lobby" ? `<b>${S.players.length}</b> players joined`
+    : S.phase === "results" ? "game over"
+    : `epoch <b>${S.epoch}</b>/${S.epochs} · turn <b>${S.turn}</b>/${S.turns}`;
+  $("rules").innerHTML = `<b>${S.pixels_per_turn}</b> px per turn · top <b>${S.keep}</b> survive each epoch`;
+  $("meLine").innerHTML = inGame ? `you are <b>${esc(S.me.name)}</b>, piece <b>${S.me.letter}</b> · ${S.me.total} points` : "";
+  $("joinBtn").classList.toggle("hidden", inGame); $("name").classList.toggle("hidden", inGame);
+  $("drawBox").classList.toggle("hidden", S.phase === "rank");
+  $("rankBox").classList.toggle("hidden", S.phase !== "rank" || !inGame);
+  const submitted = inGame && (S.me.done || S.me.queue.length >= S.pixels_per_turn);
+  $("submit").disabled = !inGame || S.phase !== "draw" || submitted;
+  $("submit").textContent = submitted ? "Submitted, waiting" : "Submit turn";
+  $("budget").textContent = S.pixels_per_turn;
+  $("pending").textContent = pending.length + (inGame ? S.me.queue.length : 0);
+  $("force").textContent = { lobby: "Start game", draw: "Force end of turn", rank: "Force end of ranking", results: "Game over" }[S.phase];
+  $("force").disabled = S.phase === "results";
+
+  const phaseKey = `${S.phase}-${S.epoch}-${S.turn}`;
+  if (phaseKey !== lastPhaseKey) { pending = []; if (S.phase === "rank") picked = (S.me && S.me.ranking) || []; lastPhaseKey = phaseKey; }
+  if (S.phase === "rank" && inGame) renderPieces();
+
+  $("players").innerHTML = S.players.length ? S.players.map(p => {
+    const ok = ["submitted", "ranked"].includes(p.status);
+    const right = S.phase === "results" ? `piece ${p.letter} · <b>${p.total}</b>` : `<span class="tag ${ok ? "ok" : ""}">${p.status}</span>`;
+    return `<div class="player"><span>${esc(p.name)}</span><span>${right}</span></div>`;
   }).join("") : `<span class="stat">nobody yet</span>`;
+
+  if (S.history.length) {
+    const ls = S.letters;
+    $("scores").innerHTML = `<table><tr><th>epoch</th>${ls.map(l => `<th>${l}</th>`).join("")}<th>kept</th></tr>` +
+      S.history.map(h => `<tr><td>${h.epoch}</td>${ls.map(l => `<td>${h.points[l] ?? ""}</td>`).join("")}<td>${h.kept.join(" ")}</td></tr>`).join("") +
+      `<tr><th>total</th>${ls.map(l => `<th>${S.history.reduce((a, h) => a + (h.points[l] || 0), 0)}</th>`).join("")}<th></th></tr></table>`;
+  } else $("scores").innerHTML = `<span class="stat">after the first epoch</span>`;
+
   const log = $("log"), atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-  log.innerHTML = S.log.filter(e => e.kind !== "done").map(e => {
-    if (e.kind === "turn") return `<div class="ev turn">— ${esc(e.text)} —</div>`;
-    const dots = e.pixels.length ? `<span class="dots">${e.pixels.slice(0, 16).map(p => `<i style="background:${S.palette[p[2]] || "transparent"};outline:1px solid var(--line)"></i>`).join("")}</span>` : "";
-    const verb = e.kind === "place" ? `placed ${e.pixels.length}` : e.kind === "join" ? "joined" : "";
-    return `<div class="ev"><span class="who">${esc(e.who)}</span> <span class="meta">t${e.turn} ${verb}</span>${dots}${e.text && e.kind !== "join" ? `<div>${esc(e.text)}</div>` : ""}</div>`;
+  log.innerHTML = S.log.map(e => {
+    if (e.kind === "turn") return `<div class="turn">— ${esc(e.text)} —</div>`;
+    if (e.kind === "phase") return `<div class="phase-ev">${esc(e.text)}</div>`;
+    if (e.kind === "resolve") return `<div>moves applied, ${esc(e.text)}${e.moves.length ? ": " + e.moves.map(m => `${m.letter} ${m.pixels.length}px`).join(", ") : ""}</div>`;
+    return `<div class="stat">${esc(e.text)}</div>`;
   }).join("");
   if (atBottom) log.scrollTop = log.scrollHeight;
   draw();
@@ -181,7 +305,10 @@ async function refresh() {
   const prev = S; S = await api("/api/state");
   if (!prev) buildPalette();
   const t = performance.now();
-  if (prev) for (const e of S.log) if (e.t > (prev.log.at(-1)?.t || 0)) for (const [x, y] of e.pixels) flashes.push({ x, y, t });
+  for (const e of S.log) if (e.t > lastLogT) {
+    if (prev && e.kind === "resolve") for (const m of e.moves) for (const [x, y] of m.pixels) flashes.push({ x, y, t });
+    lastLogT = e.t;
+  }
   render();
 }
 refresh(); setInterval(() => refresh().catch(() => {}), 1000);
