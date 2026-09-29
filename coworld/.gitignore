@@ -1,5 +1,6 @@
 build/
 dist/
 runs/
+tmp/
 __pycache__/
 .venv/
