@@ -12,7 +12,7 @@ import json
 from coworld.api_client import CoworldApiClient
 
 SERVER = "https://softmax.com/api"
-COWORLD_ID = "cow_e277e070-2c91-4442-ac0b-da26f266bdfa"   # our-story 0.1.0, canonical
+COWORLD_ID = "cow_0bdd5ef8-a29f-4be6-a30c-d20034100c9e"   # our-story 0.1.1
 POLICIES = ["ourstory-claude-opus-5-5", "ourstory-claude-sonnet-5-5", "ourstory-claude-haiku-4-5",
             "ourstory-gpt-6-astra", "ourstory-gpt-5-6-terra", "ourstory-gpt-5-6-luna"]
 
