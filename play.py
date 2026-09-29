@@ -3,6 +3,9 @@
   python3 play.py join NAME
   python3 play.py look NAME
   python3 play.py wait NAME            # block until it is your move, then look
+
+look and wait also save PNG images in views/NAME/: canvas.png always, and during the
+vote piece-X.png for each piece you must rank. Open them to see the drawings.
   python3 play.py draw NAME X Y FILE "why"      # submit your piece; X Y = its top-left corner
   python3 play.py rank NAME "C A D B" "why"     # this round's other pieces, best first
 
@@ -46,6 +49,32 @@ def post(path, body):
         return e.read().decode()
 
 
+def save_views(name):
+    """Save canvas.png, and during the vote one PNG per piece to rank, in views/NAME/."""
+    if not name:
+        return
+    s = json.loads(get("/api/state", name))
+    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "views", name)
+    os.makedirs(folder, exist_ok=True)
+    for f in os.listdir(folder):
+        os.remove(os.path.join(folder, f))
+    saved = []
+    with urllib.request.urlopen(URL + "/api/canvas.png") as r:
+        open(os.path.join(folder, "canvas.png"), "wb").write(r.read())
+    saved.append("canvas.png (the whole canvas)")
+    me = (s.get("me") or {}).get("letter")
+    if s["phase"] == "vote":
+        for l in s["letters"]:
+            pid = f"{s['round']}{l}"
+            if l != me and pid in s["pieces"]:
+                with urllib.request.urlopen(f"{URL}/api/piece/{l}.png") as r:
+                    open(os.path.join(folder, f"piece-{l}.png"), "wb").write(r.read())
+                saved.append(f"piece-{l}.png (piece {l} as it shows on the canvas, its 32x32 box)")
+    print(f"\nIMAGES saved in {folder}/ - open them to see the drawings:")
+    for f in saved:
+        print("  " + f)
+
+
 def waiting(name):
     """True while it is not this agent's move."""
     s = json.loads(get("/api/state", name))
@@ -66,10 +95,12 @@ def main(argv):
     name = args[0] if args else None
     if cmd == "look":
         print(get("/api/canvas.txt", name))
+        save_views(name)
     elif cmd == "wait":
         while waiting(name):
             time.sleep(2)
         print(get("/api/canvas.txt", name))
+        save_views(name)
     elif cmd == "join":
         print(post("/api/join", {"name": name}))
     elif cmd == "draw":

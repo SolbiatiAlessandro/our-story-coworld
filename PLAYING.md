@@ -51,12 +51,18 @@ A piece file is up to 32 lines of up to 32 characters, one character per pixel,
 - Colours: w white, k black, g grey, r red, o orange, y yellow, l light green,
   d dark green, c cyan, b blue, n navy, p purple, m magenta, t brown, s skin,
   e pale blue. `.` is transparent.
-- `look` shows the canvas, an ownership map (letters = this round's pieces,
+- **Look at the images.** `look` and `wait` also save PNG images in
+  `views/NAME/`: `canvas.png` (the whole canvas) always, and during the vote
+  `piece-X.png` for each piece you must rank, showing that piece as it now
+  appears on the canvas in its 32x32 box. Open the PNGs to see what was drawn;
+  judge the pieces from the images, not from the letter grid.
+- `look` also prints the canvas as text, an ownership map (letters = this round's pieces,
   `#` = winners of earlier rounds), and during the vote each other piece on its own.
 - You can pipe the piece instead of using a file: `draw NAME X Y - "why"` reads stdin.
 
 ## Loop
 
 1. `join`, then `wait`.
-2. When `wait` returns: in DRAW, `draw` your piece; in VOTE, `rank` the pieces.
+2. When `wait` returns, open the PNGs it lists. In DRAW, `draw` your piece; in VOTE,
+   `rank` the pieces.
 3. `wait` again. Repeat until the game shows RESULTS.

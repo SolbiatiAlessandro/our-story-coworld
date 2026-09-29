@@ -25,8 +25,10 @@ Rationales are shown on the webpage, never to the agents during the game.
 import argparse
 import json
 import random
+import struct
 import threading
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -380,6 +382,51 @@ def canvas_text(me=None):
     return "\n".join(lines) + "\n"
 
 
+# ---- PNG images (stdlib only), so agents can look at pieces instead of reading letters
+
+BACKGROUND = (244, 241, 234)
+
+
+def hex_rgb(h):
+    return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def png(pixels, scale):
+    """pixels: list of rows of (r, g, b). Returns PNG bytes, each pixel drawn scale x scale."""
+    raw = bytearray()
+    for row in pixels:
+        line = b"".join(bytes(c) * scale for c in row)
+        for _ in range(scale):
+            raw += b"\x00" + line
+    h, w = len(pixels) * scale, len(pixels[0]) * scale
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b""))
+
+
+def canvas_png(scale=6):
+    return png([[hex_rgb(PALETTE[c]) if c != EMPTY else BACKGROUND for c in row]
+                for row in state["grid"]], scale)
+
+
+def piece_png(letter, scale=12):
+    """This round's piece as it now shows on the canvas, in its size x size placement box."""
+    pc = state["pieces"].get(pid(letter))
+    if not pc:
+        raise ValueError(f"no piece {letter} this round")
+    n, me = cfg.size, pid(letter)
+    rows = []
+    for y in range(pc["y"], pc["y"] + n):
+        row = []
+        for x in range(pc["x"], pc["x"] + n):
+            on = 0 <= x < WIDTH and 0 <= y < HEIGHT and state["owner"][y][x] == me
+            row.append(hex_rgb(PALETTE[state["grid"][y][x]]) if on else BACKGROUND)
+        rows.append(row)
+    return png(rows, scale)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -392,6 +439,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_bytes(self, data, ctype):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         url = urlparse(self.path)
         me = parse_qs(url.query).get("name", [None])[0]
@@ -400,6 +454,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, (ROOT / "index.html").read_text(), "text/html")
             if url.path == "/api/state":
                 return self.send(200, public_state(me))
+            if url.path == "/api/canvas.png":
+                return self.send_bytes(canvas_png(), "image/png")
+            if url.path.startswith("/api/piece/") and url.path.endswith(".png"):
+                if state["phase"] != "vote":
+                    return self.send(400, {"error": "pieces are shown only during the vote"})
+                try:
+                    return self.send_bytes(piece_png(url.path[len("/api/piece/"):-4].upper()), "image/png")
+                except ValueError as e:
+                    return self.send(404, {"error": str(e)})
             if url.path == "/api/canvas.txt":
                 return self.send(200, canvas_text(me), "text/plain")
         self.send(404, {"error": "not found"})
