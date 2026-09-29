@@ -5,6 +5,8 @@ The Our Story game packaged as a Softmax coworld (`game.name: our-story`). Rules
 - `ourstory/engine.py` — rules, no transport. `ourstory/render.py` — PNG images (stdlib).
 - `ourstory/game/server.py` — FastAPI websocket game server (Coworld runtime contract).
 - `ourstory/player/baseline.py` — deterministic no-LLM baseline used for certification.
+- `ourstory/player/llm_player.py` — Bedrock LLM player (Converse API, sees the PNGs); upload it as a
+  policy with `--use-bedrock --bedrock-model <id>`. `tests/fake_bedrock.py` tests its plumbing offline.
 - `ourstory/game/client/viewer.html` — replay viewer and live spectator page.
 - `tools/make_manifest.py` — writes `coworld_manifest_template.json` from `ourstory/docs/`.
 
@@ -15,5 +17,4 @@ python3 tools/make_manifest.py
 ./tools/coworld.sh run-episode dist/coworld_manifest.json --variant quick-4
 ```
 
-`coworld build` needs a git `origin`; until a GitHub repo exists, `origin` points at the local
-checkout. Uploading (`coworld upload-coworld`) needs a Softmax login and has not been done.
+Uploading (`coworld upload-coworld`) needs a Softmax login and has not been done.
