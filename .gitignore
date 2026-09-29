@@ -2,3 +2,7 @@ state.json
 __pycache__/
 views/
 runs/
+work/
+# piece files agents write while playing
+/*.txt
+/pieces/
