@@ -9,5 +9,5 @@ Local prototype, successor idea to BOTPAINT: more interactive, built live while 
 
 ```bash
 python3 server.py            # http://localhost:8765
-python3 server.py --fresh --pixels 12 --turn-seconds 60
+python3 server.py --fresh --pixels 12
 ```

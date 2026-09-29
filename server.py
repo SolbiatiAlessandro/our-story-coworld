@@ -1,10 +1,10 @@
 """our-story-coworld: a shared pixel canvas that agents and humans draw on in turns.
 
-Stdlib only. Run: python3 server.py [--port 8765] [--width 64] [--height 48]
-                                     [--pixels 8] [--turn-seconds 90]
+Stdlib only. Run: python3 server.py [--port 8765] [--width 64] [--height 48] [--pixels 8]
 
-Each turn every player may place up to --pixels pixels. The turn ends when every
-player has used their budget (or called /api/done), or when --turn-seconds pass.
+Turn based, no clock. Each turn every player may place up to --pixels pixels. The
+turn ends when every player has used their budget or called /api/done. The host
+can force the next turn from the webpage (/api/next) if a player stalls.
 """
 
 import argparse
@@ -35,8 +35,7 @@ state = None
 def new_state():
     return {
         "width": cfg.width, "height": cfg.height,
-        "pixels_per_turn": cfg.pixels, "turn_seconds": cfg.turn_seconds,
-        "turn": 1, "turn_started": time.time(),
+        "pixels_per_turn": cfg.pixels, "turn": 1,
         "grid": [EMPTY * cfg.width for _ in range(cfg.height)],
         "players": {},   # name -> {"used": int, "done": bool, "joined_turn": int, "last_seen": float}
         "log": [],       # {"turn", "t", "who", "kind", "text", "pixels"}
@@ -53,33 +52,18 @@ def add_log(who, kind, text="", pixels=None):
     state["log"] = state["log"][-500:]
 
 
-def active_players():
-    # A player who has not acted for 3 turns stops blocking the turn.
-    return {n: p for n, p in state["players"].items()
-            if state["turn"] - p.get("last_turn", p["joined_turn"]) <= 3}
+def next_turn():
+    state["turn"] += 1
+    for p in state["players"].values():
+        p["used"], p["done"] = 0, False
+    add_log("world", "turn", f"turn {state['turn']} begins")
+    save()
 
 
 def maybe_advance():
-    now = time.time()
-    players = active_players()
-    all_done = players and all(p["done"] or p["used"] >= cfg.pixels for p in players.values())
-    timed_out = now - state["turn_started"] >= cfg.turn_seconds
-    if all_done or (timed_out and state["players"]):
-        state["turn"] += 1
-        state["turn_started"] = now
-        for p in state["players"].values():
-            p["used"], p["done"] = 0, False
-        add_log("world", "turn", f"turn {state['turn']} begins")
-        save()
-    elif timed_out:
-        state["turn_started"] = now  # nobody playing yet; keep the clock fresh
-
-
-def ticker():
-    while True:
-        time.sleep(1)
-        with lock:
-            maybe_advance()
+    players = state["players"].values()
+    if players and all(p["done"] or p["used"] >= cfg.pixels for p in players):
+        next_turn()
 
 
 def canvas_text():
@@ -91,8 +75,7 @@ def canvas_text():
 
 def public_state():
     return {
-        **{k: state[k] for k in ("width", "height", "pixels_per_turn", "turn_seconds", "turn", "grid", "players")},
-        "seconds_left": max(0, round(cfg.turn_seconds - (time.time() - state["turn_started"]))),
+        **{k: state[k] for k in ("width", "height", "pixels_per_turn", "turn", "grid", "players")},
         "palette": PALETTE, "empty": EMPTY,
         "log": state["log"][-80:],
     }
@@ -131,6 +114,7 @@ def do_place(body):
     p["used"] += len(placed)
     p["last_turn"] = state["turn"]
     add_log(name, "place", (body.get("note") or "")[:280], [list(t) for t in placed])
+    maybe_advance()
     save()
     return {"ok": True, "turn": state["turn"], "pixels_left": cfg.pixels - p["used"]}
 
@@ -178,13 +162,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/canvas.txt":
                 s = public_state()
                 legend = " ".join(f"{k}={v}" for k, v in NAMES.items())
-                who = ", ".join(f"{n} ({p['used']}/{cfg.pixels}{' done' if p['done'] else ''})"
+                who = ", ".join(f"{n} ({'done' if p['done'] or p['used'] >= cfg.pixels else f'{p['used']}/{cfg.pixels}'})"
                                 for n, p in s["players"].items()) or "nobody yet"
                 recent = "\n".join(
                     f"  t{e['turn']} {e['who']} {e['kind']}: {e['text']}" +
                     (f" [{len(e['pixels'])} px]" if e["pixels"] else "")
                     for e in s["log"][-20:] if e["kind"] != "turn")
-                text = (f"turn {s['turn']} | {s['seconds_left']}s left | {cfg.pixels} pixels per turn\n"
+                text = (f"turn {s['turn']} | {cfg.pixels} pixels per player per turn\n"
                         f"players: {who}\ncolours: {legend} .=empty\n\n{canvas_text()}\n\nrecent:\n{recent}\n")
                 return self.send(200, text, "text/plain")
         self.send(404, {"error": "not found"})
@@ -196,7 +180,8 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self.send(400, {"error": "body must be JSON"})
         routes = {"/api/place": do_place, "/api/say": do_say, "/api/done": do_done,
-                  "/api/join": lambda b: (player(b.get("name")), save(), {"ok": True})[-1]}
+                  "/api/join": lambda b: (player(b.get("name")), save(), {"ok": True})[-1],
+                  "/api/next": lambda b: (next_turn(), {"ok": True, "turn": state["turn"]})[-1]}
         if path == "/api/reset" and self.client_address[0] in ("127.0.0.1", "::1"):
             global state
             with lock:
@@ -219,7 +204,6 @@ def main():
     ap.add_argument("--width", type=int, default=64)
     ap.add_argument("--height", type=int, default=48)
     ap.add_argument("--pixels", type=int, default=8)
-    ap.add_argument("--turn-seconds", type=int, default=90)
     ap.add_argument("--fresh", action="store_true", help="ignore state.json and start a blank canvas")
     cfg = ap.parse_args()
     state = new_state()
@@ -227,11 +211,9 @@ def main():
         saved = json.loads(STATE_FILE.read_text())
         if saved.get("width") == cfg.width and saved.get("height") == cfg.height:
             state.update(saved)
-            state["turn_started"] = time.time()
-            state["pixels_per_turn"], state["turn_seconds"] = cfg.pixels, cfg.turn_seconds
-    threading.Thread(target=ticker, daemon=True).start()
+            state["pixels_per_turn"] = cfg.pixels
     print(f"our-story-coworld on http://localhost:{cfg.port}  ({cfg.width}x{cfg.height}, "
-          f"{cfg.pixels} px/turn, {cfg.turn_seconds}s turns)")
+          f"{cfg.pixels} px/turn)")
     ThreadingHTTPServer(("127.0.0.1", cfg.port), Handler).serve_forever()
 
 

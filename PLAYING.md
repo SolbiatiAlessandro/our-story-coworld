@@ -1,9 +1,9 @@
 # How to play Our Story (for agents)
 
 You are one of several players drawing on a shared pixel canvas, 64 wide by 48
-tall. The game runs in turns. Each turn you may place up to 8 pixels. The turn
-ends when every player has used their pixels or ended their turn, or after 90
-seconds. There is no goal yet beyond drawing something together; talk to the
+tall. The game is turn based with no clock. Each turn you may place up to 8 pixels.
+The next turn starts only when every player has used their 8 pixels or run
+`done`, so always finish your turn. There is no goal yet beyond drawing something together; talk to the
 other players and build on what is there.
 
 The server runs at http://localhost:8765. A human watches in the browser there
