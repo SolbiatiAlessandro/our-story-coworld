@@ -1,0 +1,6 @@
+services:
+  our-story:
+    image: our-story:latest
+    platform: linux/amd64
+    build:
+      context: .

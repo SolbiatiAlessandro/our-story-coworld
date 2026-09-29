@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Our Story</title>
+<style>
+  :root { --bg:#f6f3ee; --panel:#fff; --ink:#1d1b18; --muted:#7a746b; --line:#e4ded4; --accent:#2f6fdf; --good:#2e8b3d; --bad:#e23b3b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16150f; --panel:#211f19; --ink:#ece7dd; --muted:#9a9387; --line:#34312a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  header { display:flex; align-items:baseline; gap:14px; padding:12px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { margin:0; font-size:18px; }
+  .phase { font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:12px; padding:2px 8px; border-radius:99px; background:var(--accent); color:#fff; }
+  .theme { font-weight:700; }
+  .stat { color:var(--muted); }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:16px; padding:16px 20px; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; padding:12px 16px; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  canvas#cv { display:block; width:100%; image-rendering:pixelated; border-radius:4px; }
+  .row { display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  button { font:inherit; padding:4px 10px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); cursor:pointer; }
+  input[type=range] { flex:1; min-width:120px; }
+  h2 { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  h2.sub { margin:16px 0 0; }
+  aside { display:flex; flex-direction:column; gap:16px; min-width:0; }
+  .pieces { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-top:10px; }
+  .piece { border:2px solid var(--line); border-radius:8px; padding:6px; background:var(--bg); }
+  .piece.kept { border-color:var(--good); } .piece.gone { opacity:.55; }
+  .piece canvas { width:100%; image-rendering:pixelated; display:block; border-radius:3px; }
+  .lbl { display:flex; justify-content:space-between; font-weight:600; margin-bottom:4px; gap:6px; }
+  .why { font-size:12px; margin-top:6px; font-style:italic; }
+  .vote { font-size:13px; padding:4px 0; border-bottom:1px dashed var(--line); }
+  .vote .why { color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  td, th { text-align:left; padding:3px 4px; border-bottom:1px solid var(--line); font-size:13px; }
+  #err { color:var(--bad); padding:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Our Story</h1>
+  <span class="phase" id="phase">loading</span>
+  <span class="theme" id="theme"></span>
+  <span class="stat" id="where"></span>
+</header>
+<div id="err" hidden></div>
+<main>
+  <section class="panel">
+    <canvas id="cv"></canvas>
+    <div class="row" id="controls" hidden>
+      <button id="prev">◀</button><button id="play">Pause</button><button id="next">▶</button>
+      <input type="range" id="slider" min="0" value="0"><span class="stat" id="frameNo"></span>
+    </div>
+    <h2 class="sub">Pieces</h2>
+    <div class="pieces" id="pieces"></div>
+  </section>
+  <aside>
+    <div class="panel"><h2>Scores</h2><div id="scores"></div></div>
+    <div class="panel"><h2>Votes</h2><div id="votes"><span class="stat">none yet</span></div></div>
+  </aside>
+</main>
+<script>
+// Replay mode: #replay=<url> or ?replay=<url>. Live mode (served by the game): websocket /global.
+const $ = id => document.getElementById(id);
+const PALETTE = {w:"#ffffff",k:"#1a1a1a",g:"#8a8a8a",r:"#e23b3b",o:"#f28c28",y:"#f5d33b",l:"#7ed957",d:"#2e8b3d",
+  c:"#4fd1e0",b:"#2f6fdf",n:"#1f2f7a",p:"#9b5de5",m:"#f15bb5",t:"#8b5a2b",s:"#f2c9a0",e:"#c9e7ff"};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const bg = () => matchMedia("(prefers-color-scheme: dark)").matches ? "#2a2721" : "#fbfaf7";
+const post = (type, extra) => { try { window.parent.postMessage({src: "coworld-replay", type, ...extra}, "*"); } catch (e) {} };
+let frames = [], idx = 0, playing = true, timer = null, names = [];
+
+function paint(c, rows, cell) {
+  const g = c.getContext("2d");
+  g.fillStyle = bg(); g.fillRect(0, 0, c.width, c.height);
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (PALETTE[ch]) { g.fillStyle = PALETTE[ch]; g.fillRect(x * cell, y * cell, cell, cell); } }));
+}
+
+function render(f) {
+  if (!f) return;
+  const who = l => { const s = f.letters.indexOf(l); return s >= 0 && names[s] ? ` · ${esc(names[s])}` : ""; };
+  $("phase").textContent = f.done ? "done" : f.phase;
+  $("theme").textContent = f.theme ? `Theme: ${f.theme}` : "";
+  $("where").textContent = `round ${f.round}/${f.rounds}`;
+  const cv = $("cv"), cell = Math.max(3, Math.floor(cv.clientWidth * devicePixelRatio / f.width));
+  cv.width = f.width * cell; cv.height = f.height * cell; paint(cv, f.canvas, cell);
+
+  const box = $("pieces"); box.innerHTML = "";
+  const pieces = [...f.pieces].sort((a, b) => b.round - a.round || a.letter.localeCompare(b.letter));
+  if (!pieces.length) box.innerHTML = `<span class="stat">pieces appear once every player has submitted</span>`;
+  for (const p of pieces) {
+    const d = document.createElement("div");
+    d.className = "piece" + (p.kept ? " kept" : p.kept === false ? " gone" : "");
+    d.innerHTML = `<div class="lbl"><span>round ${p.round} · ${p.letter}${who(p.letter)}</span><span>${p.points != null ? p.points + " pts" : ""}</span></div>`;
+    const c = document.createElement("canvas"), pc = Math.max(2, Math.floor(160 / f.size));
+    c.width = c.height = f.size * pc; paint(c, p.rows, pc); d.appendChild(c);
+    d.insertAdjacentHTML("beforeend", `<div class="stat" style="font-size:12px;margin-top:4px">at x ${p.x}, y ${p.y}${p.kept ? " · stays" : p.kept === false ? " · erased" : ""}</div><div class="why">“${esc(p.why)}”</div>`);
+    box.appendChild(d);
+  }
+
+  const ls = [...f.letters].sort();
+  $("scores").innerHTML = `<table><tr><th>round</th>${ls.map(l => `<th>${l}</th>`).join("")}<th>stays</th></tr>` +
+    f.history.map(h => `<tr><td>${h.round}</td>${ls.map(l => `<td>${h.points[l] ?? ""}</td>`).join("")}<td>${h.kept.join(" ")}</td></tr>`).join("") +
+    `<tr><th>total</th>${ls.map(l => `<th>${f.totals[f.letters.indexOf(l)]}</th>`).join("")}<th></th></tr></table>` +
+    `<div class="stat" style="margin-top:6px">${ls.map(l => `${l}${who(l)}`).join("<br>")}</div>`;
+  $("votes").innerHTML = [...f.history].reverse().map(h => `<div class="stat" style="margin-top:6px">round ${h.round}</div>` +
+    Object.entries(h.votes).map(([l, v]) => `<div class="vote"><b>${l}</b>: ${v.ranking.join(" &gt; ")}<div class="why">“${esc(v.why)}”</div></div>`).join("")).join("") || `<span class="stat">none yet</span>`;
+}
+
+function show(i) { idx = Math.max(0, Math.min(frames.length - 1, i)); $("slider").value = idx; $("frameNo").textContent = `${idx + 1}/${frames.length}`; render(frames[idx]); post("phase", {frame: idx}); }
+function tick() { if (!playing) return; show(idx + 1 >= frames.length ? 0 : idx + 1); }
+
+async function replayMode(url) {
+  post("loading");
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`could not load replay (${r.status})`);
+  let data;
+  const buf = await r.arrayBuffer();
+  try { data = JSON.parse(new TextDecoder().decode(buf)); }
+  catch (e) {   // gzip-compressed replay
+    const ds = new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip")));
+    data = JSON.parse(await ds.text());
+  }
+  frames = data.frames || []; names = data.player_names || [];
+  if (!frames.length) throw new Error("replay has no frames");
+  $("controls").hidden = false; $("slider").max = frames.length - 1;
+  $("slider").oninput = e => { playing = false; $("play").textContent = "Play"; show(+e.target.value); };
+  $("prev").onclick = () => { playing = false; $("play").textContent = "Play"; show(idx - 1); };
+  $("next").onclick = () => { playing = false; $("play").textContent = "Play"; show(idx + 1); };
+  $("play").onclick = () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; };
+  show(0); post("ready");
+  timer = setInterval(tick, 1800);
+}
+
+function liveMode() {
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/global`);
+  ws.onmessage = e => { const f = JSON.parse(e.data); names = f.player_names || []; frames = [f]; render(f); };
+  ws.onopen = () => post("ready");
+  ws.onerror = () => fail(new Error("live connection failed"));
+}
+
+function fail(e) { $("err").hidden = false; $("err").textContent = `Error: ${e.message}`; post("error", {message: e.message}); }
+
+const hash = new URLSearchParams(location.hash.slice(1)), query = new URLSearchParams(location.search);
+const replayUrl = hash.get("replay") || query.get("replay");
+if (replayUrl) replayMode(replayUrl).catch(fail); else liveMode();
+addEventListener("resize", () => render(frames[idx]));
+</script>
+</body>
+</html>

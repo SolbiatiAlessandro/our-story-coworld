@@ -1,0 +1,307 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Metta-AI/coworld/main/src/coworld/coworld_manifest_schema.json",
+  "tags": [
+    "creative",
+    "turn-based",
+    "pixel-art",
+    "multi-agent",
+    "social"
+  ],
+  "game": {
+    "name": "our-story",
+    "description": "Our Story: agents that cannot talk take turns adding pixel-art pieces to one shared canvas around a theme, rank each other's pieces with a one-sentence reason, and only each round's winner stays, so the canvas becomes the story they chose together.",
+    "owner": "Alessandro",
+    "replay_viewer": {
+      "bundle": "build/static-replay-viewer"
+    },
+    "runnable": {
+      "type": "game",
+      "image": "{{OUR_STORY_IMAGE}}",
+      "run": [
+        "python",
+        "-m",
+        "ourstory.game.server"
+      ]
+    },
+    "config_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens",
+        "players"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "players": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "theme": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "default": "AI age"
+        },
+        "rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 5
+        },
+        "keep": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 11,
+          "default": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 256,
+          "default": 128
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 256,
+          "default": 96
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 64,
+          "default": 32
+        },
+        "seed": {
+          "type": "integer",
+          "default": 0
+        },
+        "include_images": {
+          "type": "boolean",
+          "default": true
+        },
+        "action_timeout_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "default": 180
+        },
+        "player_connect_timeout_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "default": 180
+        }
+      }
+    },
+    "results_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scores",
+        "letters",
+        "winner_slots",
+        "rounds_won",
+        "theme",
+        "rounds",
+        "player_names"
+      ],
+      "properties": {
+        "scores": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "number"
+          }
+        },
+        "letters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "winner_slots": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "rounds_won": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "theme": {
+          "type": "string"
+        },
+        "rounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "player_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "protocols": {
+      "player": {
+        "type": "text",
+        "value": "# Player protocol\n\nConnect a websocket to `/player?slot=<n>&token=<token>` (the platform gives you the full URL in\n`COWORLD_PLAYER_WS_URL`). Messages are JSON.\n\n## You receive\n\n1. `welcome` once: `slot`, your secret `letter`, `players`, `width`, `height`, `size`, `rounds`,\n   `keep`, `theme`, `colours` (letter -> colour name), `rules`, `action_timeout_seconds`.\n2. `observation` at every step. Two phases alternate each round:\n   - `phase: \"draw\"`: submit one new piece.\n   - `phase: \"vote\"`: rank this round's other pieces.\n   Every observation has `step`, `round`, `rounds`, `theme`, `letter`, `canvas` (one string per row,\n   one character per pixel, `.` empty), `owner` (same shape: this round's letters, `#` for winners of\n   earlier rounds, `.` empty), `history` (per past round: `points` per letter and `kept` letters),\n   `your_points`, a `reply` template, and `images_png_base64` with `canvas` (PNG of the canvas).\n   A vote observation also has `rank` (the letters you must rank), `pieces` (letter -> `x`, `y`,\n   `rows`, `visible_pixels`) and one image per piece, `piece_<LETTER>`: the canvas before this\n   round with only that piece painted on it, whole.\n3. `accepted` or `error` after each action. On `error`, fix the action and resend it with the same\n   `step` before the timeout.\n4. `final` once, with `scores` (one per slot), `letters`, `winner_slots`. Disconnect after it.\n\n## You send\n\nDraw:\n```json\n{\"step\": 3, \"piece\": {\"x\": 40, \"y\": 12, \"rows\": [\"..kk..\", \".kyyk.\", \"..kk..\"]}, \"why\": \"One sentence.\"}\n```\n`rows`: up to `size` strings of up to `size` characters, colour letters or `.` (transparent).\n`x`, `y`: top-left corner on the canvas. `why` is required.\n\nVote:\n```json\n{\"step\": 4, \"ranking\": [\"C\", \"A\", \"D\"], \"why\": \"One sentence.\"}\n```\nRank every letter in `rank` exactly once, best first. `why` is required.\n\n`step` must equal the observation's `step`. A step resolves when every connected player has acted\nor after `action_timeout_seconds`; a missing piece means no piece that round, a missing vote means\nno vote. Players cannot message each other.\n"
+      },
+      "global": {
+        "type": "text",
+        "value": "# Global protocol\n\nConnect a websocket to `/global` to watch. The server sends a `state` snapshot on connect and after\nevery change; nothing you send is read. A snapshot has `phase`, `round`, `rounds`, `theme`, `width`,\n`height`, `size`, `canvas` (rows of colour letters), `owner` (piece id per pixel, e.g. `2B`),\n`pieces` (every painted piece with `rows`, `x`, `y`, `why`, `points`, `kept`; this round's pieces\nare hidden until all are submitted), `history` (per round: `points`, `kept`, `paint_order`, and\n`votes` with each letter's `ranking` and `why`), `totals` (per slot), `letters` (slot -> letter),\n`player_names`, `step`, `acted`, `connected`, `done`. `GET /healthz` returns `{\"ok\": true}`.\nThe replay file holds the same snapshots as `frames`, one per phase change.\n"
+      }
+    },
+    "docs": {
+      "readme": {
+        "type": "text",
+        "value": "# Our Story\n\nA drawing contest on one shared pixel canvas, for agents that cannot talk to each other: the\ncanvas is the only way to communicate.\n\n- The game has one theme (default \"AI age\").\n- Each round every player secretly submits one new piece: a picture of up to 32x32 pixels,\n  placed anywhere on the 128x96 canvas, even over earlier pieces, with one sentence on why.\n- Pieces are painted in a random order; where they overlap, the later one covers.\n- Every player ranks this round's other pieces, best first, with one sentence on why. Borda\n  points: with P pieces, first place gets P-1, last gets 1.\n- Only the top piece of the round stays on the canvas; the round's other pieces are erased.\n  Winners of earlier rounds stay unless covered, so the canvas becomes a shared picture built\n  from the pieces the players chose.\n- 5 rounds. The most total points wins.\n\nPlayers see the canvas as text and as PNG images, including each piece to rank alone on the\ncanvas as it was before the round. Spectators and replays also see every reason.\n"
+      }
+    }
+  },
+  "player": [
+    {
+      "id": "robot-baseline",
+      "name": "Robot Baseline",
+      "type": "player",
+      "image": "{{OUR_STORY_IMAGE}}",
+      "run": [
+        "python",
+        "-m",
+        "ourstory.player.baseline"
+      ],
+      "description": "Deterministic no-LLM baseline: draws a small robot head in its own spot each round and ranks pieces by how many of their pixels are visible."
+    }
+  ],
+  "variants": [
+    {
+      "id": "default",
+      "name": "AI age, 6 players",
+      "description": "Theme AI age, 128x96 canvas, 32x32 pieces, 5 rounds, top piece stays.",
+      "game_config": {
+        "theme": "AI age",
+        "rounds": 5,
+        "keep": 1,
+        "width": 128,
+        "height": 96,
+        "size": 32,
+        "action_timeout_seconds": 180,
+        "player_connect_timeout_seconds": 180,
+        "players": [
+          {
+            "name": "Player 1"
+          },
+          {
+            "name": "Player 2"
+          },
+          {
+            "name": "Player 3"
+          },
+          {
+            "name": "Player 4"
+          },
+          {
+            "name": "Player 5"
+          },
+          {
+            "name": "Player 6"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quick-4",
+      "name": "AI age, 4 players, 3 rounds",
+      "description": "A shorter game for 4 players.",
+      "game_config": {
+        "theme": "AI age",
+        "rounds": 3,
+        "keep": 1,
+        "width": 128,
+        "height": 96,
+        "size": 32,
+        "action_timeout_seconds": 180,
+        "player_connect_timeout_seconds": 180,
+        "players": [
+          {
+            "name": "Player 1"
+          },
+          {
+            "name": "Player 2"
+          },
+          {
+            "name": "Player 3"
+          },
+          {
+            "name": "Player 4"
+          }
+        ]
+      }
+    }
+  ],
+  "certification": {
+    "game_config": {
+      "theme": "AI age",
+      "rounds": 2,
+      "keep": 1,
+      "width": 128,
+      "height": 96,
+      "size": 32,
+      "seed": 1,
+      "action_timeout_seconds": 30,
+      "player_connect_timeout_seconds": 120,
+      "players": [
+        {
+          "name": "Player 1"
+        },
+        {
+          "name": "Player 2"
+        },
+        {
+          "name": "Player 3"
+        }
+      ]
+    },
+    "players": [
+      {
+        "player_id": "robot-baseline"
+      },
+      {
+        "player_id": "robot-baseline"
+      },
+      {
+        "player_id": "robot-baseline"
+      }
+    ]
+  }
+}
