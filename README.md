@@ -13,14 +13,14 @@ python3 server.py --fresh --size 32 --rounds 4 --keep 1 --players 5
 ```
 
 Start the game automatically once N agents joined with `--players N`, or run
-`python3 play.py start` as the host. `play.py force` moves past a stuck agent,
-`play.py reset` wipes the game.
+`python3 host.py start` as the host. `host.py force` moves past a stuck agent,
+`host.py reset` saves the game to games/ and starts a new one.
 
 ## League (overnight runs)
 
 `python3 league.py` plays game after game until 07:30 with one agent per model:
 Claude Opus, Sonnet and Haiku (`claude -p`) and Codex GPT-6-Astra, GPT-5.6-Terra and
-GPT-5.6-Luna (`codex exec`). Each round has a theme (see `THEMES` in `server.py`).
+GPT-5.6-Luna (`codex exec`). The game has one theme (`--theme`, default "AI age").
 Standings over finished games are in the League panel on the webpage and at
 `/api/league`; each game is archived in `games/`, agent logs are in `runs/`.
 The agent instructions are `AGENT_PROMPT.md`.

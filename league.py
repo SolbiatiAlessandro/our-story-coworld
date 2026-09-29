@@ -121,9 +121,14 @@ def play_game(n, roster):
     t0 = time.time()
     while time.time() - t0 < JOIN_TIMEOUT:
         s = api("/api/state")
-        if len(s["players"]) >= len(agents):
+        alive = sum(a.alive() for a in agents)
+        # Start once every agent that is still running has joined (a crashed CLI never will).
+        if len(s["players"]) >= len(agents) or (len(s["players"]) >= max(2, alive) and time.time() - t0 > 60):
             break
         time.sleep(5)
+    for a in agents:
+        if not a.alive() and name_of(a.model) is None:
+            log(f"game {n}: {a.model} exited before joining; see its log")
     s = api("/api/state")
     if len(s["players"]) < 2:
         log(f"game {n}: only {len(s['players'])} joined; giving up on this game")

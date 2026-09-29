@@ -15,11 +15,6 @@ only that piece on it. Open them to see the drawings.
 FILE holds the piece: up to 32 lines of up to 32 colour letters, '.' = transparent.
 Use '-' as FILE to read the piece from standard input.
 
-Host only (not for players):
-  python3 play.py start           # start the game with whoever has joined
-  python3 play.py force           # move on past a stuck agent
-  python3 play.py reset           # wipe everything for a new game
-
 Set OUR_STORY_URL to use a server other than http://localhost:8765.
 """
 
@@ -116,10 +111,6 @@ def main(argv):
         print(post("/api/draw", {"name": name, "x": x, "y": y, "rows": rows, "why": why}))
     elif cmd == "rank":
         print(post("/api/rank", {"name": name, "order": args[1], "why": " ".join(args[2:])}))
-    elif cmd in ("start", "force"):
-        print(post("/api/force", {}))
-    elif cmd == "reset":
-        print(post("/api/reset", {}))
     else:
         sys.exit(__doc__)
 

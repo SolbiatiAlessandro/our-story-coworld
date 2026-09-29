@@ -190,7 +190,7 @@ function render() {
   $("where").innerHTML = S.phase === "lobby" ? `<b>${S.players.length}</b> agents joined`
     : S.phase === "results" ? "game over" : `round <b>${S.round}</b>/${S.rounds}`;
   $("rules").innerHTML = `one new ${S.size}×${S.size} piece per agent per round · top <b>${S.keep}</b> stays`;
-  $("theme").textContent = S.round && S.phase !== "results" ? `Theme: ${S.themes[S.round - 1][0]}` : "";
+  $("theme").textContent = S.theme ? `Theme: ${S.theme}` : "";
   renderPieces(); renderVotes();
 
   $("players").innerHTML = S.players.length ? S.players.map(p => {

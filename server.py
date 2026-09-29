@@ -5,9 +5,9 @@ Stdlib only. Run: python3 server.py [--port 8765] [--size 32] [--rounds 5] [--ke
 
 Rules:
   lobby   agents join (the webpage is for watching only); the game starts when
-          --players have joined, or when the host runs `play.py start`. Each agent
+          --players have joined, or when the host runs `host.py start`. Each agent
           gets an anonymous letter (A, B, ...). No chat: the canvas is the only channel.
-  themes  every round has a theme (THEMES below), shown to the agents.
+  theme   the whole game has one theme (--theme, default "AI age"), shown to the agents.
   draw    each round every agent secretly submits a new piece: a picture of up to
           --size x --size placed anywhere, even over earlier pieces ('.' is
           transparent), plus one sentence on why it drew that. Each round's pieces
@@ -39,15 +39,7 @@ STATE_FILE = ROOT / "state.json"
 ARCHIVE = ROOT / "games"
 WIDTH, HEIGHT = 128, 96
 LETTERS = "ABCDEFGHIJKL"
-# One theme per round. Names from the Dress To Impress theme list
-# (dti-dress-to-impress.fandom.com/wiki/Themes); the scene hints are ours.
-THEMES = [
-    ("Under the Sea", "fish, coral, shipwrecks, mermaids, whatever lives below the waves"),
-    ("Enchanted Forest", "magic trees, mushrooms, fairies, glowing flowers"),
-    ("Alien Invasion", "flying saucers, strange visitors, beams from the sky"),
-    ("Midnight Circus", "a dark, mysterious circus: tents, acrobats, strange performers"),
-    ("Winter Wonderland", "snow, ice, a magical winter world"),
-]
+DEFAULT_THEME = "AI age"   # one theme for the whole game; change with --theme
 OLD = "#"   # ownership mark for surviving pieces from earlier rounds
 
 # One character per colour so agents can read the canvas as plain text.
@@ -69,7 +61,7 @@ state = None
 def new_state():
     return {
         "phase": "lobby", "round": 0, "rounds": cfg.rounds, "keep": cfg.keep, "size": cfg.size,
-        "themes": [list(t) for t in THEMES[:cfg.rounds]],
+        "theme": cfg.theme,
         "width": WIDTH, "height": HEIGHT, "started": time.time(),
         "grid": [EMPTY * WIDTH for _ in range(HEIGHT)],
         "owner": [[""] * WIDTH for _ in range(HEIGHT)],   # piece id ("2B" = round 2, letter B) per pixel
@@ -102,9 +94,8 @@ def letters():
     return sorted(p["letter"] for p in state["players"].values())
 
 
-def theme(rnd=None):
-    t = state["themes"][(rnd or state["round"]) - 1] if state["round"] else None
-    return f"{t[0]} ({t[1]})" if t else ""
+def theme():
+    return state.get("theme") or DEFAULT_THEME
 
 
 def pid(letter, rnd=None):
@@ -143,9 +134,9 @@ def start_game():
     if len(state["players"]) < 2:
         raise ValueError("need at least 2 players")
     state.update(phase="draw", round=1, started=time.time())
-    add_log("phase", f"game starts: {cfg.rounds} rounds, one new {cfg.size}x{cfg.size} piece per agent "
+    add_log("phase", f"game starts. Theme: {theme()}. {cfg.rounds} rounds, one new {cfg.size}x{cfg.size} piece per agent "
                      f"per round, the top {cfg.keep} of each round stays")
-    add_log("turn", f"round 1: draw. Theme: {state['themes'][0][0]}")
+    add_log("turn", "round 1: draw")
 
 
 def paint_pieces():
@@ -205,7 +196,7 @@ def end_round():
             sorted(state["players"].items(), key=lambda kv: -kv[1]["total"])))
     else:
         state.update(phase="draw", round=rnd + 1)
-        add_log("turn", f"round {state['round']}: draw. Theme: {state['themes'][state['round'] - 1][0]}")
+        add_log("turn", f"round {state['round']}: draw")
 
 
 def maybe_advance():
@@ -316,7 +307,7 @@ def status(p):
 def public_state(me=None):
     """Everything, including rationales: this feeds the watch-only webpage."""
     s = {k: state[k] for k in ("phase", "round", "rounds", "keep", "size", "width", "height",
-                               "grid", "owner", "history", "themes")}
+                               "grid", "owner", "history", "theme")}
     over = state["phase"] == "results"
     # This round's pieces are hidden until painted.
     s["pieces"] = {i: {**pc, "visible": visible(i)} for i, pc in state["pieces"].items()
@@ -548,7 +539,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--size", type=int, default=32, help="a piece is at most size x size")
-    ap.add_argument("--rounds", type=int, default=len(THEMES), help="rounds per game, one theme each")
+    ap.add_argument("--rounds", type=int, default=5, help="rounds per game")
+    ap.add_argument("--theme", default=DEFAULT_THEME, help="theme of the whole game")
     ap.add_argument("--keep", type=int, default=1, help="pieces of each round that stay")
     ap.add_argument("--players", type=int, default=0,
                     help="start the game automatically once this many agents have joined")

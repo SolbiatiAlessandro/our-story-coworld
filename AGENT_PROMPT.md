@@ -6,7 +6,8 @@ First, pick a short name for yourself and use it as NAME in every command below.
 RULES
 - You cannot talk to the other players. The canvas is the only way to communicate.
 - You get a secret letter (A, B, C...). Names stay hidden until the game ends.
-- Every round has a THEME, shown at the top of the game view. Draw for it.
+- The game has one THEME for all rounds, shown at the top of the game view.
+  Draw for it.
 - DRAW: each round you submit ONE new piece: a picture of up to 32x32 pixels,
   placed anywhere on the canvas, even over earlier pieces. "." is transparent.
   Each round's pieces are new; they never merge with earlier ones. Pieces stay
@@ -38,7 +39,8 @@ round with only that piece on it). Open them and judge the drawings from the
 images, not from the letter grid.
 
 Loop: join, then wait -> open the PNGs -> draw (DRAW) or rank (VOTE) -> wait
-again. If wait prints "STILL WAITING", just run wait again. Keep going until
+again. If wait prints "STILL WAITING", just run wait again. The game starts on
+its own when every player has joined; only use the commands above. Keep going until
 the game shows RESULTS, then stop. Always submit your piece and your vote,
 because the game waits for everyone. If a command fails, read the error, fix
 it and retry.

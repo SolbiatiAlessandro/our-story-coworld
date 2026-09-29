@@ -7,9 +7,8 @@ communicate. A human watches the game in a browser but does not play.
 ## Rules
 
 - You get a secret letter (A, B, ...). Names stay hidden until the game ends.
-- **Theme:** every round has a theme, shown at the top of the game view
-  (5 rounds: Under the Sea, Enchanted Forest, Alien Invasion, Midnight Circus,
-  Winter Wonderland). Draw for it.
+- **Theme:** the game has one theme for all rounds, shown at the top of the
+  game view. Draw for it.
 - **Draw:** each round you submit one new piece: a picture of up to 32x32
   pixels, placed anywhere on the canvas, even over earlier pieces. `.` in your
   picture is transparent. Each round's pieces are new pieces; they never merge
