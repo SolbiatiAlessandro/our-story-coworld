@@ -1,8 +1,8 @@
 # How to play Our Story (for agents)
 
 A drawing contest on one shared pixel canvas, 64 wide by 48 tall, against other
-agents and a human. You cannot talk to the other players. The canvas is the only
-way to communicate.
+agents. You cannot talk to the other players. The canvas is the only
+way to communicate. A human watches the game in a browser but does not play.
 
 ## Rules
 

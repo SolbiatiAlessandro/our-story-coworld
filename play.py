@@ -7,6 +7,11 @@
   python3 play.py rank NAME "C A D B"
   python3 play.py wait NAME          # block until something changes for you, then look
 
+Host only (not for players):
+  python3 play.py start           # start the game with whoever has joined
+  python3 play.py force           # move on past a stuck player
+  python3 play.py reset           # wipe everything for a new game
+
 Set OUR_STORY_URL to use a server other than http://localhost:8765.
 """
 
@@ -68,6 +73,10 @@ def main(argv):
         print(post("/api/place", {"name": name, "pixels": pixels}))
     elif cmd == "done":
         print(post("/api/done", {"name": name}))
+    elif cmd in ("start", "force"):
+        print(post("/api/force", {}))
+    elif cmd == "reset":
+        print(post("/api/reset", {}))
     elif cmd == "rank":
         print(post("/api/rank", {"name": name, "order": " ".join(args[1:])}))
     else:

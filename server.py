@@ -1,10 +1,11 @@
 """our-story-coworld: a drawing contest on one shared pixel canvas.
 
 Stdlib only. Run: python3 server.py [--port 8765] [--pixels 16] [--turns 3] [--epochs 4]
-                                     [--keep 3] [--fresh]
+                                     [--keep 3] [--players N] [--fresh]
 
 Rules:
-  lobby   players join; each gets an anonymous letter (A, B, ...). Names stay hidden
+  lobby   agents join (the webpage is for watching only); the game starts when
+          --players have joined, or when the host runs `play.py start`. Each gets an anonymous letter (A, B, ...). Names stay hidden
           until the end. No chat: the canvas is the only channel.
   draw    turn based, no clock. Each turn every player secretly submits up to
           --pixels pixels anywhere on the canvas, on top of anyone's, or '.' to
@@ -181,6 +182,8 @@ def do_join(body):
         raise ValueError("game is full")
     state["players"][name] = {"letter": free[0], "queue": [], "done": False, "ranking": None, "total": 0}
     add_log("join", f"a player joined ({len(state['players'])} now)")
+    if cfg.players and len(state["players"]) >= cfg.players:
+        start_game()
     return {"ok": True, "letter": free[0]}
 
 
@@ -297,7 +300,7 @@ def canvas_text(me=None):
     p = state["players"].get(me)
     mine = p["letter"] if p else None
     lines = [{
-        "lobby": f"LOBBY: waiting for the host to start. {len(state['players'])} players joined.",
+        "lobby": f"LOBBY: waiting for the game to start. {len(state['players'])} players joined.",
         "draw": f"DRAW: epoch {state['epoch']}/{cfg.epochs}, turn {state['turn']}/{cfg.turns}. "
                 f"Submit up to {cfg.pixels} pixels anywhere.",
         "rank": f"RANK: epoch {state['epoch']}/{cfg.epochs} drawing is over. Rank every other piece, best first.",
@@ -387,6 +390,8 @@ def main():
     ap.add_argument("--turns", type=int, default=3, help="drawing turns per epoch")
     ap.add_argument("--epochs", type=int, default=4, help="epochs per game")
     ap.add_argument("--keep", type=int, default=3, help="pieces that survive each epoch")
+    ap.add_argument("--players", type=int, default=0,
+                    help="start the game automatically once this many players have joined")
     ap.add_argument("--fresh", action="store_true", help="ignore state.json and start a new game")
     cfg = ap.parse_args()
     state = new_state()
